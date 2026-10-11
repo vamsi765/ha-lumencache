@@ -1,0 +1,5 @@
+# The latest Home Assistant test helpers (they pull in Home Assistant itself)
+pytest-homeassistant-custom-component
+ruff
+# The protocol library. Replace with "pylumencache" once it is on PyPI.
+pylumencache @ git+https://github.com/vamsi765/pylumencache@main

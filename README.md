@@ -4,7 +4,19 @@ Control a [LumenCache](https://www.lumencache.com) ReNetA lighting system entire
 
 > **Unofficial.** This is an independent, community project. It is not made, endorsed or supported by LumenCache. "LumenCache" and "ReNetA" are names of their respective owners.
 
-> **Status: planning / pre-alpha.** Nothing is released yet. This README describes what the project is being built to do; items marked *(planned)* do not exist yet. Follow the [roadmap](#roadmap) for progress.
+> **Status: pre-alpha.** Nothing is released yet. A first version of the integration exists (see [What works now](#what-works-now)); items marked *(planned)* do not exist yet. Follow the [roadmap](#roadmap) for progress.
+
+## What works now
+
+- Setup from the UI (host, port, username, password, Prefix Topic, TLS verification).
+- A **connection** `binary_sensor`.
+- A `light` for each socket card the system announces (color temperature for SC-CC models, brightness only otherwise) and for each zone you list in the integration's options (the system cannot list its zones). Brightness, color temperature and transition (fade) work; turning on without parameters restores the last values.
+- The inventory is saved between restarts, because the system does not keep it on the broker.
+- **State is assumed.** The system does not report the state of a light. A light shows the state of the last command sent through the system (by this integration, a wall switch or any other client). Fixtures that belong to a zone do not follow zone commands, because zone membership cannot be read.
+
+Not yet: wall-switch events, zone membership services, commissioning, reboot and reset. The color temperature range (default 2700 to 6500 K) is a setting because the fixtures' real range is not known yet.
+
+The protocol library is in its own repository, [pylumencache](https://github.com/vamsi765/pylumencache), together with the protocol description.
 
 ## What it does
 
@@ -54,7 +66,9 @@ Design points:
 - A ReNetA system reachable from Home Assistant, with MQTT enabled.
 - MQTT credentials for the system. LumenCache issues them on request.
 
-## Installation *(planned)*
+## Installation
+
+The integration needs the `pylumencache` package, which is not on PyPI yet. Until it is, install it into Home Assistant's Python environment first (`pip install git+https://github.com/vamsi765/pylumencache`). It also needs a recent Home Assistant: the library uses `paho-mqtt` 2.1 or later through `aiomqtt`, and older Home Assistant releases pin version 1.6.
 
 Through [HACS](https://hacs.xyz), as a custom repository at first:
 
@@ -65,7 +79,7 @@ Through [HACS](https://hacs.xyz), as a custom repository at first:
 
 The card is served by the integration itself, so there is no separate card install.
 
-## Configuration *(planned)*
+## Configuration
 
 Setup is done in the UI:
 

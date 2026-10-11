@@ -1,0 +1,48 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect to a LumenCache ReNetA system",
+        "description": "Enter the broker details and the Prefix Topic that LumenCache gave you.",
+        "data": {
+          "host": "Host",
+          "port": "Port",
+          "username": "Username",
+          "password": "Password",
+          "prefix": "Prefix Topic",
+          "verify_tls": "Verify the broker's certificate"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Could not connect. Check the host, port, username, password and Prefix Topic."
+    },
+    "abort": {
+      "already_configured": "This system is already set up."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "LumenCache options",
+        "description": "The system cannot list its zones, so enter the ones you want as lights, for example `250: Living room, 251: Kitchen`.",
+        "data": {
+          "zones": "Zones",
+          "min_kelvin": "Warmest color temperature (K)",
+          "max_kelvin": "Coolest color temperature (K)"
+        }
+      }
+    },
+    "error": {
+      "invalid_zones": "Use the form `250: Name, 251: Name`.",
+      "invalid_range": "The coolest value must be higher than the warmest."
+    }
+  },
+  "entity": {
+    "binary_sensor": {
+      "connection": {
+        "name": "Connection"
+      }
+    }
+  }
+}
