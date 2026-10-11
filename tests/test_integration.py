@@ -131,3 +131,77 @@ async def test_first_turn_on_uses_highest_brightness_and_off_sets_zero_for_a_zon
 async def test_entry_unloads(hass, controller):
     entry = await setup(hass)
     assert await hass.config_entries.async_unload(entry.entry_id)
+
+
+def _sent(controller):
+    return [json.loads(p) for c in controller.connections for t, p in c.published if t.endswith("/cmd")]
+
+
+async def test_set_light_service_sends_a_precise_brightness(hass, controller):
+    await setup(hass)
+    await wait_for(hass, lambda: hass.states.get("light.sc_cc2_50w") is not None)
+    await hass.services.async_call(
+        DOMAIN, "set_light", {"entity_id": "light.sc_cc2_50w", "brightness_pct": 0.3, "transition": 2}, blocking=True)
+    await hass.services.async_call(
+        DOMAIN, "set_light", {"entity_id": "light.lumencache_living_room", "brightness_pct": 0}, blocking=True)
+    assert _sent(controller) == [
+        {"e": 57, "g": 14, "bri": 0.3, "cct": 6500, "fade": 2000},
+        {"e": 56, "z": 250, "bri": 0},
+    ]
+
+
+async def test_send_raw_service_sends_the_command(hass, controller):
+    await setup(hass)
+    await hass.services.async_call(DOMAIN, "send_raw", {"command": {"e": 10, "g": 12}}, blocking=True)
+    assert _sent(controller) == [{"e": 10, "g": 12}]
+
+
+async def test_send_raw_needs_a_loaded_system(hass):
+    from homeassistant.exceptions import ServiceValidationError
+
+    from custom_components.lumencache import async_setup
+    await async_setup(hass, {})
+    with pytest.raises(ServiceValidationError):
+        await hass.services.async_call(DOMAIN, "send_raw", {"command": {"e": 10}}, blocking=True)
+
+
+async def test_diagnostics_hide_secrets(hass, controller):
+    from custom_components.lumencache.diagnostics import async_get_config_entry_diagnostics
+
+    entry = await setup(hass)
+    await wait_for(hass, lambda: hass.states.get("light.sc_cc2_50w") is not None)
+    result = await async_get_config_entry_diagnostics(hass, entry)
+    text = json.dumps(result)
+    for secret in ("broker.test", PREFIX, "HSN14", '"p"'):
+        assert secret not in text
+    assert result["connected"] is True
+    assert {d["gid"] for d in result["model"]["devices"]} == {1, 2, 14, 15}
+
+
+async def test_repair_issue_when_no_device_arrives(hass, controller):
+    from homeassistant.helpers import issue_registry as ir
+
+    from custom_components.lumencache.const import NO_DEVICES_DELAY
+
+    controller._records = []   # a wrong Prefix Topic: connected, nothing announced
+    entry = await setup(hass)
+    registry = ir.async_get(hass)
+    assert registry.async_get_issue(DOMAIN, f"no_devices_{entry.entry_id}") is None
+    from datetime import timedelta
+
+    from homeassistant.util import dt as dt_util
+    from pytest_homeassistant_custom_component.common import async_fire_time_changed
+    async_fire_time_changed(hass, dt_util.utcnow() + timedelta(seconds=NO_DEVICES_DELAY + 1))
+    await hass.async_block_till_done()
+    assert registry.async_get_issue(DOMAIN, f"no_devices_{entry.entry_id}") is not None
+
+
+async def test_reconfigure_changes_the_prefix_and_reloads(hass, controller):
+    entry = await setup(hass)
+    result = await entry.start_reconfigure_flow(hass)
+    assert result["type"] is FlowResultType.FORM and result["step_id"] == "reconfigure"
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {**DATA, CONF_PREFIX: "platform:na/other/"})
+    await hass.async_block_till_done()
+    assert result["type"] is FlowResultType.ABORT and result["reason"] == "reconfigure_successful"
+    assert entry.data[CONF_PREFIX] == "platform:na/other"

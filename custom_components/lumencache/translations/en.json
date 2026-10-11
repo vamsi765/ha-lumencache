@@ -12,13 +12,26 @@
           "prefix": "Prefix Topic",
           "verify_tls": "Verify the broker's certificate"
         }
+      },
+      "reconfigure": {
+        "title": "Change the connection",
+        "description": "Change the broker details or the Prefix Topic of this system.",
+        "data": {
+          "host": "Host",
+          "port": "Port",
+          "username": "Username",
+          "password": "Password",
+          "prefix": "Prefix Topic",
+          "verify_tls": "Verify the broker's certificate"
+        }
       }
     },
     "error": {
       "cannot_connect": "Could not connect. Check the host, port, username, password and Prefix Topic."
     },
     "abort": {
-      "already_configured": "This system is already set up."
+      "already_configured": "This system is already set up.",
+      "reconfigure_successful": "The connection was updated."
     }
   },
   "options": {
@@ -43,6 +56,46 @@
       "connection": {
         "name": "Connection"
       }
+    }
+  },
+  "services": {
+    "set_light": {
+      "name": "Set light",
+      "description": "Set a light or zone precisely, with brightness down to 0.1%. Zero turns it off.",
+      "fields": {
+        "brightness_pct": {
+          "name": "Brightness",
+          "description": "Brightness in percent."
+        },
+        "color_temp_kelvin": {
+          "name": "Color temperature",
+          "description": "Color temperature in kelvin."
+        },
+        "transition": {
+          "name": "Transition",
+          "description": "Fade time in seconds."
+        }
+      }
+    },
+    "send_raw": {
+      "name": "Send raw command",
+      "description": "Send any ReNetA command to the system. Use with care.",
+      "fields": {
+        "command": {
+          "name": "Command",
+          "description": "The command as an object, for example {\"e\": 57, \"g\": 14, \"bri\": 50}."
+        },
+        "system": {
+          "name": "System",
+          "description": "Which system to send to. Not needed with only one."
+        }
+      }
+    }
+  },
+  "issues": {
+    "no_devices": {
+      "title": "No LumenCache devices found",
+      "description": "The integration is connected to the broker but no device has been announced for 10 minutes. Check the Prefix Topic under Settings, Devices & services, LumenCache, Reconfigure, and that the system is online. Devices are announced when the system connects, so restarting it may help."
     }
   }
 }

@@ -12,9 +12,13 @@ Control a [LumenCache](https://www.lumencache.com) ReNetA lighting system entire
 - A **connection** `binary_sensor`.
 - A `light` for each socket card the system announces (color temperature for SC-CC models, brightness only otherwise) and for each zone you list in the integration's options (the system cannot list its zones). Brightness, color temperature and transition (fade) work; turning on without parameters restores the last values.
 - The inventory is saved between restarts, because the system does not keep it on the broker.
+- Services: `lumencache.set_light` (brightness in 0.1% steps, with color temperature and transition) and `lumencache.send_raw` (any command).
+- A diagnostics download with the host, credentials, Prefix Topic and serial numbers removed.
+- A repair issue when the integration is connected but no device is announced for 10 minutes, which usually means a wrong Prefix Topic.
+- **Reconfigure** from the integration's menu, to change the host, credentials or Prefix Topic without removing the system.
 - **State is assumed.** The system does not report the state of a light. A light shows the state of the last command sent through the system (by this integration, a wall switch or any other client). Fixtures that belong to a zone do not follow zone commands, because zone membership cannot be read.
 
-Not yet: wall-switch events, zone membership services, commissioning, reboot and reset. The color temperature range (default 2700 to 6500 K) is a setting because the fixtures' real range is not known yet.
+Not yet: wall-switch events, zone membership services, commissioning, reboot and reset, and the other services listed below. The color temperature range (default 2700 to 6500 K) is a setting because the fixtures' real range is not known yet.
 
 The protocol library is in its own repository, [pylumencache](https://github.com/vamsi765/pylumencache), together with the protocol description.
 
@@ -68,7 +72,16 @@ Design points:
 
 ## Installation
 
-The integration needs the `pylumencache` package, which is not on PyPI yet. Until it is, install it into Home Assistant's Python environment first (`pip install git+https://github.com/vamsi765/pylumencache`). It also needs a recent Home Assistant: the library uses `paho-mqtt` 2.1 or later through `aiomqtt`, and older Home Assistant releases pin version 1.6.
+The integration needs the `pylumencache` package, which is not on PyPI yet. It also needs a recent Home Assistant: the library uses `paho-mqtt` 2.1 or later through `aiomqtt`, and older Home Assistant releases pin version 1.6.
+
+### Home Assistant in Docker
+
+1. Build the library wheel from a checkout of [pylumencache](https://github.com/vamsi765/pylumencache): `pip wheel . --no-deps -w dist`.
+2. Copy the integration folder `custom_components/lumencache` into your Home Assistant configuration directory (the one mounted at `/config`), so you have `<config>/custom_components/lumencache`. Copy the wheel to `<config>/wheels/`.
+3. Install the wheel inside the container, using your container's name: `docker exec homeassistant pip install /config/wheels/pylumencache-*.whl`
+4. Restart the container, then go to **Settings → Devices & services → Add integration → LumenCache**.
+
+The library is installed inside the container, so recreating the container (for example after pulling a new Home Assistant image) removes it. Run step 3 again afterwards. Once `pylumencache` is on PyPI, Home Assistant installs it by itself and steps 1 and 3 go away.
 
 Through [HACS](https://hacs.xyz), as a custom repository at first:
 
@@ -100,11 +113,13 @@ To add another ReNetA system, repeat step 1. Each system keeps its own options.
 | Port, SIB and fault status | diagnostic `sensor` / `binary_sensor` |
 | Reboot | `button` |
 
-## Services *(planned)*
+## Services
+
+`lumencache.set_light` and `lumencache.send_raw` exist now; the others are *(planned)*.
 
 | Service | Purpose |
 |---|---|
-| `lumencache.set_light` | Precise brightness (0.1% steps), color temperature and fade, for lights or zones |
+| `lumencache.set_light` | Precise brightness (0.1% steps), color temperature and fade, for lights or zones. Available now |
 | `lumencache.add_to_zone`, `remove_from_zone`, `list_device_zones` | Zone membership: add (with optional zone defaults), remove, and list a device's zones |
 | `lumencache.hail` | Look up what is at a GID (the default, GID 0, lists devices not yet commissioned) |
 | `lumencache.query_device` | Ask a device to ping, send its heartbeat, report its status, or dump its configuration |
@@ -113,7 +128,7 @@ To add another ReNetA system, repeat step 1. Each system keeps its own options.
 | `lumencache.set_socket_mode` | Change a socket card's operating mode |
 | `lumencache.reboot` | Reboot a device (by GID) |
 | `lumencache.factory_reset` | Factory reset a device (by GID), behind safeguards |
-| `lumencache.send_raw` | Send any ReNetA command, as a fallback |
+| `lumencache.send_raw` | Send any ReNetA command, as a fallback. Available now |
 
 System-level services take an optional `system` field. With one system it is filled in automatically; with several it is required.
 

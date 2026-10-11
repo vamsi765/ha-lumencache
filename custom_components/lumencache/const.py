@@ -14,3 +14,10 @@ DEFAULT_MAX_KELVIN = 6500
 
 CONNECT_TIMEOUT = 15   # seconds to wait for the first connection
 SAVE_DELAY = 10   # seconds to wait before writing the inventory to disk
+
+SERVICE_SET_LIGHT = "set_light"
+SERVICE_SEND_RAW = "send_raw"
+ATTR_BRIGHTNESS_PCT = "brightness_pct"
+ATTR_COMMAND = "command"
+ATTR_SYSTEM = "system"
+NO_DEVICES_DELAY = 600   # seconds without any device announced before a repair issue is raised

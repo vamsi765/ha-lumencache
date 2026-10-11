@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from typing import Any
 
+import voluptuous as vol
 from homeassistant.components.light import (
     ATTR_BRIGHTNESS,
     ATTR_COLOR_TEMP_KELVIN,
@@ -13,6 +14,7 @@ from homeassistant.components.light import (
 )
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers import entity_platform
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -22,12 +24,14 @@ from pylumencache.inventory import Category, Change, Device, LightState
 from . import LumenCacheConfigEntry
 from .binary_sensor import hub_device_info
 from .const import (
+    ATTR_BRIGHTNESS_PCT,
     CONF_MAX_KELVIN,
     CONF_MIN_KELVIN,
     CONF_ZONES,
     DEFAULT_MAX_KELVIN,
     DEFAULT_MIN_KELVIN,
     DOMAIN,
+    SERVICE_SET_LIGHT,
 )
 from .helpers import ha_to_percent, light_command, parse_zones, percent_to_ha, supports_color_temperature
 
@@ -36,6 +40,15 @@ async def async_setup_entry(
     hass: HomeAssistant, entry: LumenCacheConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
     data = entry.runtime_data
+    entity_platform.async_get_current_platform().async_register_entity_service(
+        SERVICE_SET_LIGHT,
+        {
+            vol.Required(ATTR_BRIGHTNESS_PCT): vol.All(vol.Coerce(float), vol.Range(min=0, max=100)),
+            vol.Optional(ATTR_COLOR_TEMP_KELVIN): vol.All(vol.Coerce(int), vol.Range(min=1000, max=20000)),
+            vol.Optional(ATTR_TRANSITION): vol.All(vol.Coerce(float), vol.Range(min=0, max=6553)),
+        },
+        "async_set_light",
+    )
     min_k = entry.options.get(CONF_MIN_KELVIN, DEFAULT_MIN_KELVIN)
     max_k = entry.options.get(CONF_MAX_KELVIN, DEFAULT_MAX_KELVIN)
 
@@ -136,7 +149,7 @@ class LumenLight(LightEntity):
 
     @property
     def color_temp_kelvin(self) -> int | None:
-        if ColorMode.COLOR_TEMP in self._attr_supported_color_modes:
+        if self._attr_color_mode == ColorMode.COLOR_TEMP:
             return self._state.color_temperature
         return None
 
@@ -176,6 +189,22 @@ class LumenLight(LightEntity):
             on=False,
             brightness_percent=None,
             kelvin=None,
+            fade_ms=None if transition is None else int(transition * 1000),
+            last_brightness=self._last_brightness,
+            last_kelvin=self._last_kelvin,
+        ))
+
+    async def async_set_light(self, **kwargs: Any) -> None:
+        """The `lumencache.set_light` service: brightness in percent, down to 0.1%. Zero turns the light off."""
+        percent = round(kwargs[ATTR_BRIGHTNESS_PCT], 1)
+        transition = kwargs.get(ATTR_TRANSITION)
+        _ = self._state   # refreshes the remembered last values
+        await self._send(light_command(
+            zone=self._target if self._kind == "zone" else None,
+            gid=self._target if self._kind == "fixture" else None,
+            on=percent > 0,
+            brightness_percent=percent,
+            kelvin=kwargs.get(ATTR_COLOR_TEMP_KELVIN),
             fade_ms=None if transition is None else int(transition * 1000),
             last_brightness=self._last_brightness,
             last_kelvin=self._last_kelvin,

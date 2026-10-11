@@ -44,6 +44,23 @@ async def _can_connect(data: dict[str, Any]) -> bool:
     return True
 
 
+def _unique_id(user_input: dict[str, Any]) -> str:
+    # The Prefix Topic identifies the system; keep it out of the unique id as plain text.
+    return hashlib.sha256(f"{user_input[CONF_HOST]}/{user_input[CONF_PREFIX]}".encode()).hexdigest()[:16]
+
+
+def _connection_schema(defaults: dict[str, Any] | None = None) -> vol.Schema:
+    defaults = defaults or {}
+    return vol.Schema({
+        vol.Required(CONF_HOST, default=defaults.get(CONF_HOST, vol.UNDEFINED)): str,
+        vol.Required(CONF_PORT, default=defaults.get(CONF_PORT, DEFAULT_PORT)): int,
+        vol.Required(CONF_USERNAME, default=defaults.get(CONF_USERNAME, vol.UNDEFINED)): str,
+        vol.Required(CONF_PASSWORD, default=defaults.get(CONF_PASSWORD, vol.UNDEFINED)): str,
+        vol.Required(CONF_PREFIX, default=defaults.get(CONF_PREFIX, vol.UNDEFINED)): str,
+        vol.Required(CONF_VERIFY_TLS, default=defaults.get(CONF_VERIFY_TLS, True)): bool,
+    })
+
+
 class LumenCacheConfigFlow(ConfigFlow, domain=DOMAIN):
     VERSION = 1
 
@@ -51,24 +68,34 @@ class LumenCacheConfigFlow(ConfigFlow, domain=DOMAIN):
         errors: dict[str, str] = {}
         if user_input is not None:
             user_input[CONF_PREFIX] = user_input[CONF_PREFIX].strip().rstrip("/")
-            # The Prefix Topic identifies the system; keep it out of the unique id as plain text.
-            digest = hashlib.sha256(f"{user_input[CONF_HOST]}/{user_input[CONF_PREFIX]}".encode()).hexdigest()
-            await self.async_set_unique_id(digest[:16])
+            await self.async_set_unique_id(_unique_id(user_input))
             self._abort_if_unique_id_configured()
             if await _can_connect(user_input):
                 return self.async_create_entry(title=f"LumenCache ({user_input[CONF_HOST]})", data=user_input)
             errors["base"] = "cannot_connect"
 
-        schema = vol.Schema({
-            vol.Required(CONF_HOST): str,
-            vol.Required(CONF_PORT, default=DEFAULT_PORT): int,
-            vol.Required(CONF_USERNAME): str,
-            vol.Required(CONF_PASSWORD): str,
-            vol.Required(CONF_PREFIX): str,
-            vol.Required(CONF_VERIFY_TLS, default=True): bool,
-        })
+        schema = _connection_schema()
         return self.async_show_form(
             step_id="user", data_schema=self.add_suggested_values_to_schema(schema, user_input), errors=errors
+        )
+
+    async def async_step_reconfigure(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+        """Change the host, credentials or Prefix Topic of a system that is already set up."""
+        entry = self._get_reconfigure_entry()
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            user_input[CONF_PREFIX] = user_input[CONF_PREFIX].strip().rstrip("/")
+            unique_id = _unique_id(user_input)
+            await self.async_set_unique_id(unique_id)
+            if unique_id != entry.unique_id:
+                self._abort_if_unique_id_configured()   # another entry already uses this system
+            if await _can_connect(user_input):
+                return self.async_update_reload_and_abort(entry, unique_id=unique_id, data=user_input)
+            errors["base"] = "cannot_connect"
+        return self.async_show_form(
+            step_id="reconfigure",
+            data_schema=self.add_suggested_values_to_schema(_connection_schema(dict(entry.data)), user_input),
+            errors=errors,
         )
 
     @staticmethod
