@@ -83,7 +83,7 @@
       "fields": {
         "command": {
           "name": "Command",
-          "description": "The command as an object, for example {\"e\": 57, \"g\": 14, \"bri\": 50}."
+          "description": "The command as an object. It needs the event code in \"e\"; the other keys depend on the command."
         },
         "system": {
           "name": "System",
