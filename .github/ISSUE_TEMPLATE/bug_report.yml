@@ -1,0 +1,36 @@
+name: Bug report
+description: Something does not work as expected
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. **Do not paste your Prefix Topic, host, credentials, serial numbers (`hsn`) or MAC addresses.** Use the integration's *Download diagnostics*, which removes them.
+  - type: input
+    id: ha_version
+    attributes:
+      label: Home Assistant version
+      placeholder: "2026.9.4"
+    validations:
+      required: true
+  - type: input
+    id: install
+    attributes:
+      label: Installation type and paho-mqtt version
+      description: "For example Docker, and the output of `pip show paho-mqtt` inside the container"
+  - type: input
+    id: versions
+    attributes:
+      label: Integration and pylumencache versions
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what did you expect?
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs and diagnostics
+      description: Relevant log lines (check them for private data first) and the diagnostics file contents if useful.
+      render: text

@@ -169,9 +169,9 @@ Each fixture and zone belongs to exactly one ReNetA system, and systems are full
 ```
 ha-lumencache/
 ├─ custom_components/lumencache/   Home Assistant integration (and bundled card)
-├─ card/                      Lovelace card source (TypeScript + Lit)
-├─ docs/                      architecture, user guide, troubleshooting
-└─ .devcontainer/, .github/workflows/
+├─ card/                           Lovelace card source (TypeScript + Lit)
+├─ .devcontainer/                  development container
+└─ .github/workflows/
 ```
 
 ### Principles
@@ -200,7 +200,7 @@ The protocol library, the protocol spec (`asyncapi.yaml`, `protocol.md`) and the
 
 ## Contributing
 
-Issues and pull requests are welcome once the project leaves the planning stage. Please keep changes typed and tested, and do not include credentials, MAC addresses or other identifying data in fixtures or issue reports.
+Issues and pull requests are welcome. The project is pre-alpha, so for larger changes please open an issue first. Please keep changes typed and tested, and do not include credentials, MAC addresses or other identifying data in fixtures or issue reports.
 
 ## License
 

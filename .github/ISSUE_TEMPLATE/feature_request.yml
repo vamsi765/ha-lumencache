@@ -1,0 +1,14 @@
+name: Feature request
+description: Suggest a feature
+labels: [enhancement]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What would you like to be able to do?
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: Why does it matter to you? Any ReNetA command you know of that does it?
