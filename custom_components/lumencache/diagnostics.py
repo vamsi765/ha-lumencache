@@ -18,6 +18,6 @@ async def async_get_config_entry_diagnostics(hass: HomeAssistant, entry: LumenCa
     return {
         "entry": async_redact_data(dict(entry.data), TO_REDACT),
         "options": dict(entry.options),
-        "connected": data.client.connected,
+        "connected": data.cache.connected,
         "model": async_redact_data(data.model.to_dict(), TO_REDACT),
     }

@@ -8,7 +8,7 @@ import voluptuous as vol
 from homeassistant.config_entries import ConfigFlow, ConfigFlowResult, OptionsFlow
 from homeassistant.const import CONF_HOST, CONF_PASSWORD, CONF_PORT, CONF_USERNAME
 from homeassistant.core import callback
-from pylumencache.client import LumenCacheClient
+from pylumencache import LumenCache
 
 from .const import (
     CONF_MAX_KELVIN,
@@ -26,7 +26,7 @@ from .helpers import format_zones, parse_zones
 
 
 async def _can_connect(data: dict[str, Any]) -> bool:
-    client = LumenCacheClient(
+    cache = LumenCache.mqtt(
         data[CONF_HOST],
         data[CONF_PREFIX],
         port=data[CONF_PORT],
@@ -34,13 +34,13 @@ async def _can_connect(data: dict[str, Any]) -> bool:
         password=data[CONF_PASSWORD],
         verify_tls=data[CONF_VERIFY_TLS],
     )
-    await client.start()
+    await cache.start()
     try:
-        await client.wait_connected(CONNECT_TIMEOUT)
+        await cache.wait_connected(CONNECT_TIMEOUT)
     except TimeoutError:
         return False
     finally:
-        await client.stop()
+        await cache.stop()
     return True
 
 

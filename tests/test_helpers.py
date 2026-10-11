@@ -3,6 +3,7 @@ import importlib.util
 from pathlib import Path
 
 import pytest
+from pylumencache import SetLight
 
 SPEC = importlib.util.spec_from_file_location(
     "lumencache_helpers", Path(__file__).parent.parent / "custom_components" / "lumencache" / "helpers.py"
@@ -49,19 +50,19 @@ def kwargs(**over):
 
 
 def test_turn_on_zone_with_everything_given():
-    assert helpers.light_command(zone=250, **kwargs(brightness_percent=50, kelvin=4000, fade_ms=800)) == {
-        "e": 56, "z": 250, "bri": 50, "cct": 4000, "fade": 800}
+    command = helpers.light_command(zone=250, **kwargs(brightness_percent=50, kelvin=4000, fade_ms=800))
+    assert command == SetLight("zone", 250, 50, 4000, 800)
 
 
 def test_turn_on_restores_the_last_values():
-    assert helpers.light_command(gid=14, **kwargs(last_brightness=35.5, last_kelvin=3000)) == {
-        "e": 57, "g": 14, "bri": 35.5, "cct": 3000}
+    command = helpers.light_command(gid=14, **kwargs(last_brightness=35.5, last_kelvin=3000))
+    assert command == SetLight("fixture", 14, 35.5, 3000)
 
 
 def test_first_turn_on_uses_the_highest_brightness():
-    assert helpers.light_command(gid=14, **kwargs())["bri"] == 100.0
+    assert helpers.light_command(gid=14, **kwargs()).brightness == 100.0
 
 
 def test_turn_off_sets_zero_and_leaves_the_color_alone():
-    assert helpers.light_command(zone=250, **kwargs(on=False, kelvin=4000, fade_ms=1000, last_kelvin=3000)) == {
-        "e": 56, "z": 250, "bri": 0, "fade": 1000}
+    command = helpers.light_command(zone=250, **kwargs(on=False, kelvin=4000, fade_ms=1000, last_kelvin=3000))
+    assert command == SetLight("zone", 250, 0, None, 1000)

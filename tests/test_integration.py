@@ -6,8 +6,8 @@ import aiomqtt
 import pytest
 from homeassistant.const import CONF_HOST, CONF_PASSWORD, CONF_PORT, CONF_USERNAME
 from homeassistant.data_entry_flow import FlowResultType
-from pylumencache.client import LumenCacheClient
-from pylumencache.fake import FakeController
+from pylumencache.transports.mqtt import MqttTransport
+from pylumencache.transports.mqtt.fake import FakeController
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.lumencache.const import (
@@ -43,11 +43,10 @@ def controller():
         connections.append(connection)
         return connection
 
-    def client(*args, **kwargs):
-        return LumenCacheClient(*args, **{**kwargs, "client_factory": factory})
+    def transport(*args, **kwargs):
+        return MqttTransport(*args, **{**kwargs, "client_factory": factory})
 
-    with patch("custom_components.lumencache.LumenCacheClient", client), \
-            patch("custom_components.lumencache.config_flow.LumenCacheClient", client):
+    with patch("pylumencache.transports.mqtt.MqttTransport", transport):
         fake.connections = connections
         yield fake
 
@@ -87,10 +86,10 @@ async def test_config_flow_reports_a_failed_connection(hass):
         async def __aexit__(self, *exc):
             return False
 
-    def client(*args, **kwargs):
-        return LumenCacheClient(*args, **{**kwargs, "client_factory": Refusing, "reconnect_delays": (0.01,)})
+    def transport(*args, **kwargs):
+        return MqttTransport(*args, **{**kwargs, "client_factory": Refusing, "reconnect_delays": (0.01,)})
 
-    with patch("custom_components.lumencache.config_flow.LumenCacheClient", client), \
+    with patch("pylumencache.transports.mqtt.MqttTransport", transport), \
             patch("custom_components.lumencache.config_flow.CONNECT_TIMEOUT", 0.2):
         result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": "user"})
         result = await hass.config_entries.flow.async_configure(result["flow_id"], DATA)

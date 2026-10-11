@@ -34,7 +34,7 @@ class ConnectionSensor(BinarySensorEntity):
 
     @property
     def is_on(self) -> bool:
-        return self._data.client.connected
+        return self._data.cache.connected
 
     async def async_added_to_hass(self) -> None:
         @callback

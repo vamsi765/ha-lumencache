@@ -18,8 +18,7 @@ from homeassistant.helpers import entity_platform
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from pylumencache.client import NotConnectedError
-from pylumencache.inventory import Category, Change, Device, LightState
+from pylumencache import Category, Change, Command, Device, LightState, NotConnectedError
 
 from . import LumenCacheConfigEntry
 from .binary_sensor import hub_device_info
@@ -134,7 +133,7 @@ class LumenLight(LightEntity):
 
     @property
     def available(self) -> bool:
-        return self._data.client.connected
+        return self._data.cache.connected
 
     @property
     def is_on(self) -> bool | None:
@@ -210,8 +209,8 @@ class LumenLight(LightEntity):
             last_kelvin=self._last_kelvin,
         ))
 
-    async def _send(self, command: dict[str, Any]) -> None:
+    async def _send(self, command: Command) -> None:
         try:
-            await self._data.client.send(command)
+            await self._data.cache.send(command)
         except NotConnectedError as err:
             raise HomeAssistantError("Not connected to the LumenCache system") from err

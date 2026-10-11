@@ -1,9 +1,7 @@
 """Pure helpers with no Home Assistant imports, so they can be tested on their own."""
 from __future__ import annotations
 
-from typing import Any
-
-from pylumencache.protocol import commands
+from pylumencache import Command, SetLight
 
 
 def ha_to_percent(brightness: int) -> float:
@@ -56,7 +54,7 @@ def light_command(
     fade_ms: int | None,
     last_brightness: float,
     last_kelvin: int | None,
-) -> dict[str, Any]:
+) -> Command:
     """The command for turning a zone (`zone`) or a fixture (`gid`) on or off.
 
     Turning on without a brightness restores the last one (the highest, 100, the first time).
@@ -68,5 +66,7 @@ def light_command(
         brightness = brightness_percent if brightness_percent is not None else last_brightness
         kelvin = kelvin if kelvin is not None else last_kelvin
     if zone is not None:
-        return commands.zone_control(zone_id=zone, brightness=brightness, color_temperature=kelvin, fade=fade_ms)
-    return commands.direct_control(gid=gid, brightness=brightness, color_temperature=kelvin, fade=fade_ms)
+        return SetLight("zone", zone, brightness, kelvin, fade_ms)
+    if gid is None:
+        raise ValueError("give a zone or a gid")
+    return SetLight("fixture", gid, brightness, kelvin, fade_ms)

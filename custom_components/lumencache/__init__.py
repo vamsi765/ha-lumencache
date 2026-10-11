@@ -15,8 +15,7 @@ from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.event import async_call_later
 from homeassistant.helpers.storage import Store
-from pylumencache.client import LumenCacheClient, NotConnectedError
-from pylumencache.inventory import Change, SystemModel
+from pylumencache import Change, LumenCache, NotConnectedError, SystemModel, UnsupportedError
 
 from .const import (
     ATTR_COMMAND,
@@ -36,7 +35,7 @@ PLATFORMS = [Platform.BINARY_SENSOR, Platform.LIGHT]
 
 @dataclass
 class LumenCacheData:
-    client: LumenCacheClient
+    cache: LumenCache
     model: SystemModel
     signal: str   # dispatcher signal for model changes of this entry
     connection_signal: str
@@ -63,9 +62,11 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
                 "Give the system (config entry id) to send to" if entries else "No LumenCache system is loaded"
             )
         try:
-            await entries[0].runtime_data.client.send(call.data[ATTR_COMMAND])
+            await entries[0].runtime_data.cache.send_raw(call.data[ATTR_COMMAND])
         except NotConnectedError as err:
             raise HomeAssistantError("Not connected to the LumenCache system") from err
+        except UnsupportedError as err:
+            raise HomeAssistantError("This connection does not take raw commands") from err
 
     hass.services.async_register(DOMAIN, SERVICE_SEND_RAW, send_raw, schema=SEND_RAW_SCHEMA)
     return True
@@ -76,15 +77,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: LumenCacheConfigEntry) -
     saved = await store.async_load()
     model = SystemModel.from_dict(saved) if saved else SystemModel()
 
-    client = LumenCacheClient(
+    cache = LumenCache.mqtt(
         entry.data[CONF_HOST],
         entry.data[CONF_PREFIX],
+        model=model,
         port=entry.data[CONF_PORT],
         username=entry.data[CONF_USERNAME],
         password=entry.data[CONF_PASSWORD],
         verify_tls=entry.data[CONF_VERIFY_TLS],
     )
-    data = LumenCacheData(client, model, f"{DOMAIN}_{entry.entry_id}_model", f"{DOMAIN}_{entry.entry_id}_connection")
+    data = LumenCacheData(cache, model, f"{DOMAIN}_{entry.entry_id}_model", f"{DOMAIN}_{entry.entry_id}_connection")
 
     @callback
     def model_changed(change: Change) -> None:
@@ -97,15 +99,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: LumenCacheConfigEntry) -
         async_dispatcher_send(hass, data.connection_signal, connected)
 
     entry.async_on_unload(model.add_listener(model_changed))
-    entry.async_on_unload(model.attach(client))
-    entry.async_on_unload(client.add_connection_listener(connection_changed))
+    entry.async_on_unload(cache.add_connection_listener(connection_changed))
     entry.runtime_data = data
 
-    await client.start()
+    await cache.start()
     try:
-        await client.wait_connected(CONNECT_TIMEOUT)
+        await cache.wait_connected(CONNECT_TIMEOUT)
     except TimeoutError as err:
-        await client.stop()
+        await cache.stop()
         raise ConfigEntryNotReady(f"Could not connect to {entry.data[CONF_HOST]}") from err
 
     _watch_for_no_devices(hass, entry, data)
@@ -125,7 +126,7 @@ def _watch_for_no_devices(hass: HomeAssistant, entry: LumenCacheConfigEntry, dat
     def check(_now: Any = None) -> None:
         if data.model.devices:
             ir.async_delete_issue(hass, DOMAIN, issue_id)
-        elif data.client.connected:
+        elif data.cache.connected:
             ir.async_create_issue(
                 hass, DOMAIN, issue_id, is_fixable=False, severity=ir.IssueSeverity.WARNING,
                 translation_key="no_devices",
@@ -148,7 +149,7 @@ async def _options_updated(hass: HomeAssistant, entry: LumenCacheConfigEntry) ->
 async def async_unload_entry(hass: HomeAssistant, entry: LumenCacheConfigEntry) -> bool:
     unloaded = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     if unloaded:
-        await entry.runtime_data.client.stop()
+        await entry.runtime_data.cache.stop()
         store = Store[dict[str, Any]](hass, 1, f"{DOMAIN}.{entry.entry_id}")
         await store.async_save(entry.runtime_data.model.to_dict())
     return unloaded
