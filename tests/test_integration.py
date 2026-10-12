@@ -102,7 +102,7 @@ async def test_entities_are_created_from_the_inventory_and_the_options(hass, con
     assert hass.states.get("binary_sensor.lumencache_connection").state == "on"
     assert hass.states.get("light.lumencache_living_room") is not None            # a zone, from the options
     assert hass.states.get("light.sc_cc2_50w").attributes["supported_color_modes"] == ["color_temp"]
-    assert hass.states.get("light.sc_pv2_50w").attributes["supported_color_modes"] == ["brightness"]
+    assert hass.states.get("light.sc_pv2_50w").attributes["supported_color_modes"] == ["color_temp"]   # 2-channel card
 
 
 async def test_turning_a_fixture_on_sends_a_command_and_follows_the_echo(hass, controller):

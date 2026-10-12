@@ -3,16 +3,11 @@ from __future__ import annotations
 
 from homeassistant.components.binary_sensor import BinarySensorDeviceClass, BinarySensorEntity
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import LumenCacheConfigEntry
-from .const import DOMAIN
-
-
-def hub_device_info(entry: LumenCacheConfigEntry) -> DeviceInfo:
-    return DeviceInfo(identifiers={(DOMAIN, entry.entry_id)}, name="LumenCache", manufacturer="LumenCache")
+from .entity import hub_device_info
 
 
 async def async_setup_entry(

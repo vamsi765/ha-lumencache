@@ -7,7 +7,7 @@ from typing import Any
 
 import voluptuous as vol
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import CONF_HOST, CONF_PASSWORD, CONF_PORT, CONF_USERNAME, Platform
+from homeassistant.const import CONF_HOST, Platform
 from homeassistant.core import HomeAssistant, ServiceCall, callback
 from homeassistant.exceptions import ConfigEntryNotReady, HomeAssistantError, ServiceValidationError
 from homeassistant.helpers import config_validation as cv
@@ -17,11 +17,10 @@ from homeassistant.helpers.event import async_call_later
 from homeassistant.helpers.storage import Store
 from pylumencache import Change, LumenCache, NotConnectedError, SystemModel, UnsupportedError
 
+from .connection import cache_from
 from .const import (
     ATTR_COMMAND,
     ATTR_SYSTEM,
-    CONF_PREFIX,
-    CONF_VERIFY_TLS,
     CONNECT_TIMEOUT,
     DOMAIN,
     NO_DEVICES_DELAY,
@@ -77,15 +76,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: LumenCacheConfigEntry) -
     saved = await store.async_load()
     model = SystemModel.from_dict(saved) if saved else SystemModel()
 
-    cache = LumenCache.mqtt(
-        entry.data[CONF_HOST],
-        entry.data[CONF_PREFIX],
-        model=model,
-        port=entry.data[CONF_PORT],
-        username=entry.data[CONF_USERNAME],
-        password=entry.data[CONF_PASSWORD],
-        verify_tls=entry.data[CONF_VERIFY_TLS],
-    )
+    cache = cache_from(entry.data, model)
     data = LumenCacheData(cache, model, f"{DOMAIN}_{entry.entry_id}_model", f"{DOMAIN}_{entry.entry_id}_connection")
 
     @callback

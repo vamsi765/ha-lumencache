@@ -3,7 +3,7 @@ import importlib.util
 from pathlib import Path
 
 import pytest
-from pylumencache import SetLight
+from pylumencache import Fixture, SetFixture, Zone
 
 SPEC = importlib.util.spec_from_file_location(
     "lumencache_helpers", Path(__file__).parent.parent / "custom_components" / "lumencache" / "helpers.py"
@@ -39,30 +39,25 @@ def test_zones_format_and_parse_agree():
     assert helpers.parse_zones(helpers.format_zones(zones)) == zones
 
 
-@pytest.mark.parametrize("name,expected", [("SC-CC2-50W", True), ("SC-PV2-50W", False), (None, False)])
-def test_color_temperature_support_is_guessed_from_the_model_name(name, expected):
-    assert helpers.supports_color_temperature(name) is expected
-
-
 def kwargs(**over):
     base = dict(on=True, brightness_percent=None, kelvin=None, fade_ms=None, last_brightness=100.0, last_kelvin=None)
     return {**base, **over}
 
 
 def test_turn_on_zone_with_everything_given():
-    command = helpers.light_command(zone=250, **kwargs(brightness_percent=50, kelvin=4000, fade_ms=800))
-    assert command == SetLight("zone", 250, 50, 4000, 800)
+    command = helpers.light_command(Zone(250), **kwargs(brightness_percent=50, kelvin=4000, fade_ms=800))
+    assert command == SetFixture(Zone(250), 50, 4000, 800)
 
 
 def test_turn_on_restores_the_last_values():
-    command = helpers.light_command(gid=14, **kwargs(last_brightness=35.5, last_kelvin=3000))
-    assert command == SetLight("fixture", 14, 35.5, 3000)
+    command = helpers.light_command(Fixture(14), **kwargs(last_brightness=35.5, last_kelvin=3000))
+    assert command == SetFixture(Fixture(14), 35.5, 3000)
 
 
 def test_first_turn_on_uses_the_highest_brightness():
-    assert helpers.light_command(gid=14, **kwargs()).brightness == 100.0
+    assert helpers.light_command(Fixture(14), **kwargs()).brightness == 100.0
 
 
 def test_turn_off_sets_zero_and_leaves_the_color_alone():
-    command = helpers.light_command(zone=250, **kwargs(on=False, kelvin=4000, fade_ms=1000, last_kelvin=3000))
-    assert command == SetLight("zone", 250, 0, None, 1000)
+    command = helpers.light_command(Zone(250), **kwargs(on=False, kelvin=4000, fade_ms=1000, last_kelvin=3000))
+    assert command == SetFixture(Zone(250), 0, None, 1000)
