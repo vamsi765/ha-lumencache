@@ -4,7 +4,7 @@ Control a [LumenCache](https://www.lumencache.com) ReNetA lighting system entire
 
 > **Unofficial.** This is an independent, community project. It is not made, endorsed or supported by LumenCache. "LumenCache" and "ReNetA" are names of their respective owners.
 
-> **Status: pre-alpha.** Nothing is released yet. A first version of the integration exists (see [What works now](#what-works-now)); items marked *(planned)* do not exist yet. Follow the [roadmap](#roadmap) for progress.
+> **Status: alpha.** A first version of the integration works against a ReNetA system (see [What works now](#what-works-now)), but expect rough edges and changes between releases. Items marked *(planned)* do not exist yet. Follow the [roadmap](#roadmap) for progress.
 
 ## What works now
 
@@ -249,7 +249,7 @@ The protocol library, the protocol spec (`asyncapi.yaml`, `protocol.md`) and the
 
 ## Contributing
 
-Issues and pull requests are welcome. The project is pre-alpha, so for larger changes please open an issue first. Please keep changes typed and tested, and do not include credentials, MAC addresses or other identifying data in fixtures or issue reports.
+Issues and pull requests are welcome. The project is alpha, so for larger changes please open an issue first. Please keep changes typed and tested, and do not include credentials, MAC addresses or other identifying data in fixtures or issue reports.
 
 ## License
 
