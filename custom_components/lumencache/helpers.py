@@ -31,6 +31,27 @@ def parse_zones(text: str) -> dict[int, str]:
     return zones
 
 
+def parse_kelvin_steps(text: str) -> list[int]:
+    """Parse "2700, 3000, 3500" into the temperatures a light can be set to, ascending. Empty means no steps.
+
+    Raises ValueError for anything but two or more distinct temperatures between 1000 and 20000 K.
+    """
+    parts = [part.strip() for part in text.replace("\n", ",").split(",") if part.strip()]
+    if not parts:
+        return []
+    try:
+        steps = sorted({int(part) for part in parts})
+    except ValueError as err:
+        raise ValueError("not a temperature") from err
+    if len(steps) < 2 or not all(1000 <= k <= 20000 for k in steps):
+        raise ValueError("need two or more temperatures between 1000 and 20000 K")
+    return steps
+
+
+def format_kelvin_steps(steps: list[int]) -> str:
+    return ", ".join(str(k) for k in steps)
+
+
 def format_zones(zones: dict[int, str]) -> str:
     return ", ".join(f"{zone_id}: {name}" for zone_id, name in zones.items())
 

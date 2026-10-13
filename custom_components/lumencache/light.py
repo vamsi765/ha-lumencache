@@ -22,6 +22,7 @@ from pylumencache import Category, Change, Device, FixtureState, Target, Zone, f
 from . import LumenCacheConfigEntry
 from .const import (
     ATTR_BRIGHTNESS_PCT,
+    CONF_KELVIN_STEPS,
     CONF_MAX_KELVIN,
     CONF_MIN_KELVIN,
     CONF_ZONES,
@@ -31,7 +32,7 @@ from .const import (
     SERVICE_SET_LIGHT,
 )
 from .entity import LumenFixtureEntity, hub_device_info
-from .helpers import ha_to_percent, light_command, parse_zones, percent_to_ha
+from .helpers import ha_to_percent, light_command, parse_kelvin_steps, parse_zones, percent_to_ha
 
 
 async def async_setup_entry(
@@ -49,11 +50,15 @@ async def async_setup_entry(
     )
     min_k = entry.options.get(CONF_MIN_KELVIN, DEFAULT_MIN_KELVIN)
     max_k = entry.options.get(CONF_MAX_KELVIN, DEFAULT_MAX_KELVIN)
+    # Listed temperatures (for lights that only have a few) set the range themselves.
+    steps = tuple(parse_kelvin_steps(entry.options.get(CONF_KELVIN_STEPS, "")))
+    if steps:
+        min_k, max_k = steps[0], steps[-1]
 
     # Zones cannot be listed by the system, so they come from the options.
     zones = parse_zones(entry.options.get(CONF_ZONES, ""))
     async_add_entities(
-        LumenLight(entry, Zone(zone_id), name, hub_device_info(entry), True, min_k, max_k)
+        LumenLight(entry, Zone(zone_id), name, hub_device_info(entry), True, min_k, max_k, steps)
         for zone_id, name in zones.items()
     )
 
@@ -63,14 +68,16 @@ async def async_setup_entry(
     def add_fixtures(_change: Change | None = None) -> None:
         new = [d for d in data.model.devices.values() if d.category == Category.SOCKET_CARD and d.gid not in known]
         known.update(d.gid for d in new)
-        async_add_entities(_fixture_light(entry, d, min_k, max_k) for d in new)
+        async_add_entities(_fixture_light(entry, d, min_k, max_k, steps) for d in new)
 
     add_fixtures()
     # The inventory arrives some seconds after connecting, and again after the system restarts.
     entry.async_on_unload(async_dispatcher_connect(hass, data.signal, add_fixtures))
 
 
-def _fixture_light(entry: LumenCacheConfigEntry, device: Device, min_k: int, max_k: int) -> LumenLight:
+def _fixture_light(
+    entry: LumenCacheConfigEntry, device: Device, min_k: int, max_k: int, steps: tuple[int, ...]
+) -> LumenLight:
     fixture = fixture_for(device)
     info = DeviceInfo(
         identifiers={(DOMAIN, device.hsn or f"{entry.entry_id}-{device.gid}")},
@@ -79,7 +86,7 @@ def _fixture_light(entry: LumenCacheConfigEntry, device: Device, min_k: int, max
         model=device.name,
         via_device=(DOMAIN, entry.entry_id),
     )
-    return LumenLight(entry, fixture, None, info, fixture.color_temperature, min_k, max_k, unique=device.hsn)
+    return LumenLight(entry, fixture, None, info, fixture.color_temperature, min_k, max_k, steps, unique=device.hsn)
 
 
 class LumenLight(LumenFixtureEntity, LightEntity):
@@ -96,11 +103,15 @@ class LumenLight(LumenFixtureEntity, LightEntity):
         color_temperature: bool,
         min_kelvin: int,
         max_kelvin: int,
+        kelvin_steps: tuple[int, ...] = (),
         unique: str | None = None,
     ) -> None:
         super().__init__(entry, target, name, device_info, unique)
         self._attr_min_color_temp_kelvin = min_kelvin
         self._attr_max_color_temp_kelvin = max_kelvin
+        # Read by the brightness x color card, which lays the listed temperatures out as equal bands.
+        if color_temperature and kelvin_steps:
+            self._attr_extra_state_attributes = {"color_temp_steps": list(kelvin_steps)}
         mode = ColorMode.COLOR_TEMP if color_temperature else ColorMode.BRIGHTNESS
         self._attr_supported_color_modes = {mode}
         self._attr_color_mode = mode

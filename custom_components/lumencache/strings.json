@@ -38,9 +38,10 @@
     "step": {
       "init": {
         "title": "LumenCache options",
-        "description": "The system cannot list its zones, so enter the ones you want as lights, for example `250: Living room, 251: Kitchen`.",
+        "description": "The system cannot list its zones, so enter the ones you want as lights, for example `250: Living room, 251: Kitchen`. If your lights only have a few color temperatures, list them, for example `2700, 3000, 3500, 4000, 5000`; the card then shows one band for each, and the warmest and coolest below are not used.",
         "data": {
           "zones": "Zones",
+          "kelvin_steps": "Color temperatures to choose from (K)",
           "min_kelvin": "Warmest color temperature (K)",
           "max_kelvin": "Coolest color temperature (K)"
         }
@@ -48,6 +49,7 @@
     },
     "error": {
       "invalid_zones": "Use the form `250: Name, 251: Name`.",
+      "invalid_steps": "Use two or more temperatures between 1000 and 20000, for example `2700, 3000, 3500`.",
       "invalid_range": "The coolest value must be higher than the warmest."
     }
   },

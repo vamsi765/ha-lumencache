@@ -3,6 +3,7 @@
   "name": "LumenCache",
   "codeowners": ["@vamsi765"],
   "config_flow": true,
+  "dependencies": ["frontend", "http"],
   "documentation": "https://github.com/vamsi765/ha-lumencache",
   "integration_type": "hub",
   "iot_class": "local_push",

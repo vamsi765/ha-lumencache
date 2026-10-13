@@ -34,6 +34,18 @@ def test_bad_zones_are_refused(bad):
         helpers.parse_zones(bad)
 
 
+def test_kelvin_steps_are_sorted_and_may_be_empty():
+    assert helpers.parse_kelvin_steps("5000, 2700,3000\n3500, 4000, 3000") == [2700, 3000, 3500, 4000, 5000]
+    assert helpers.parse_kelvin_steps("  ") == []
+    assert helpers.parse_kelvin_steps(helpers.format_kelvin_steps([2700, 5000])) == [2700, 5000]
+
+
+@pytest.mark.parametrize("bad", ["2700", "2700, 2700", "2700, warm", "500, 3000", "2700, 30000"])
+def test_bad_kelvin_steps_are_refused(bad):
+    with pytest.raises(ValueError):
+        helpers.parse_kelvin_steps(bad)
+
+
 def test_zones_format_and_parse_agree():
     zones = {250: "Living room", 251: "Kitchen"}
     assert helpers.parse_zones(helpers.format_zones(zones)) == zones

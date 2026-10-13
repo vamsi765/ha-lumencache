@@ -11,6 +11,7 @@ from homeassistant.core import callback
 
 from .connection import cache_from
 from .const import (
+    CONF_KELVIN_STEPS,
     CONF_MAX_KELVIN,
     CONF_MIN_KELVIN,
     CONF_PREFIX,
@@ -22,7 +23,7 @@ from .const import (
     DEFAULT_PORT,
     DOMAIN,
 )
-from .helpers import format_zones, parse_zones
+from .helpers import format_kelvin_steps, format_zones, parse_kelvin_steps, parse_zones
 
 
 async def _can_connect(data: dict[str, Any]) -> bool:
@@ -107,13 +108,23 @@ class LumenCacheOptionsFlow(OptionsFlow):
             except ValueError:
                 errors[CONF_ZONES] = "invalid_zones"
             else:
-                if user_input[CONF_MIN_KELVIN] >= user_input[CONF_MAX_KELVIN]:
-                    errors[CONF_MAX_KELVIN] = "invalid_range"
+                try:
+                    steps = parse_kelvin_steps(user_input.get(CONF_KELVIN_STEPS, ""))
+                except ValueError:
+                    errors[CONF_KELVIN_STEPS] = "invalid_steps"
                 else:
-                    return self.async_create_entry(data={**user_input, CONF_ZONES: format_zones(zones)})
+                    if user_input[CONF_MIN_KELVIN] >= user_input[CONF_MAX_KELVIN]:
+                        errors[CONF_MAX_KELVIN] = "invalid_range"
+                    else:
+                        return self.async_create_entry(data={
+                            **user_input,
+                            CONF_ZONES: format_zones(zones),
+                            CONF_KELVIN_STEPS: format_kelvin_steps(steps),
+                        })
 
         schema = vol.Schema({
             vol.Optional(CONF_ZONES, default=options.get(CONF_ZONES, "")): str,
+            vol.Optional(CONF_KELVIN_STEPS, default=options.get(CONF_KELVIN_STEPS, "")): str,
             vol.Required(CONF_MIN_KELVIN, default=options.get(CONF_MIN_KELVIN, DEFAULT_MIN_KELVIN)): int,
             vol.Required(CONF_MAX_KELVIN, default=options.get(CONF_MAX_KELVIN, DEFAULT_MAX_KELVIN)): int,
         })

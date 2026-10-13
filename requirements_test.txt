@@ -1,5 +1,7 @@
 # The latest Home Assistant test helpers (they pull in Home Assistant itself)
 pytest-homeassistant-custom-component
+# The integration serves its card through the frontend
+home-assistant-frontend
 ruff
 # The protocol library
 pylumencache>=0.1.0

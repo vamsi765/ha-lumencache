@@ -3,9 +3,12 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 import voluptuous as vol
+from homeassistant.components.frontend import add_extra_js_url
+from homeassistant.components.http import StaticPathConfig
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_HOST, Platform
 from homeassistant.core import HomeAssistant, ServiceCall, callback
@@ -30,6 +33,8 @@ from .const import (
 
 _LOGGER = logging.getLogger(__name__)
 PLATFORMS = [Platform.BINARY_SENSOR, Platform.LIGHT]
+CARD_FILE = Path(__file__).parent / "frontend" / "lumencache-card.js"
+CARD_URL = f"/{DOMAIN}/lumencache-card.js"
 
 
 @dataclass
@@ -68,6 +73,8 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
             raise HomeAssistantError("This connection does not take raw commands") from err
 
     hass.services.async_register(DOMAIN, SERVICE_SEND_RAW, send_raw, schema=SEND_RAW_SCHEMA)
+    await hass.http.async_register_static_paths([StaticPathConfig(CARD_URL, str(CARD_FILE), cache_headers=False)])
+    add_extra_js_url(hass, CARD_URL)
     return True
 
 

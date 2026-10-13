@@ -11,6 +11,9 @@ from pylumencache.transports.mqtt.fake import FakeController
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.lumencache.const import (
+    CONF_KELVIN_STEPS,
+    CONF_MAX_KELVIN,
+    CONF_MIN_KELVIN,
     CONF_PREFIX,
     CONF_VERIFY_TLS,
     CONF_ZONES,
@@ -105,6 +108,36 @@ async def test_entities_are_created_from_the_inventory_and_the_options(hass, con
     assert hass.states.get("light.sc_pv2_50w").attributes["supported_color_modes"] == ["color_temp"]   # 2-channel card
 
 
+async def test_listed_temperatures_set_the_range_and_are_given_to_the_card(hass, controller):
+    await setup(hass, {CONF_ZONES: "250: Living room", CONF_KELVIN_STEPS: "2700, 3000, 3500, 4000, 5000"})
+    await wait_for(hass, lambda: hass.states.get("light.sc_cc2_50w") is not None)
+    for entity in ("light.sc_cc2_50w", "light.lumencache_living_room"):
+        attributes = hass.states.get(entity).attributes
+        assert attributes["color_temp_steps"] == [2700, 3000, 3500, 4000, 5000]
+        assert (attributes["min_color_temp_kelvin"], attributes["max_color_temp_kelvin"]) == (2700, 5000)
+
+
+async def test_without_listed_temperatures_the_card_gets_no_steps(hass, controller):
+    await setup(hass)
+    await wait_for(hass, lambda: hass.states.get("light.sc_cc2_50w") is not None)
+    assert "color_temp_steps" not in hass.states.get("light.sc_cc2_50w").attributes
+
+
+async def test_options_take_listed_temperatures_and_refuse_bad_ones(hass, controller):
+    entry = await setup(hass)
+    options = {CONF_ZONES: "250: Living room", CONF_MIN_KELVIN: 2700, CONF_MAX_KELVIN: 6500}
+
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"], {**options, CONF_KELVIN_STEPS: "2700"})
+    assert result["type"] is FlowResultType.FORM and result["errors"] == {CONF_KELVIN_STEPS: "invalid_steps"}
+
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"], {**options, CONF_KELVIN_STEPS: "5000, 2700, 3000"})
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert result["data"][CONF_KELVIN_STEPS] == "2700, 3000, 5000"
+
+
 async def test_turning_a_fixture_on_sends_a_command_and_follows_the_echo(hass, controller):
     await setup(hass)
     await wait_for(hass, lambda: hass.states.get("light.sc_cc2_50w") is not None)
@@ -157,9 +190,9 @@ async def test_send_raw_service_sends_the_command(hass, controller):
 
 async def test_send_raw_needs_a_loaded_system(hass):
     from homeassistant.exceptions import ServiceValidationError
+    from homeassistant.setup import async_setup_component
 
-    from custom_components.lumencache import async_setup
-    await async_setup(hass, {})
+    assert await async_setup_component(hass, DOMAIN, {})
     with pytest.raises(ServiceValidationError):
         await hass.services.async_call(DOMAIN, "send_raw", {"command": {"e": 10}}, blocking=True)
 

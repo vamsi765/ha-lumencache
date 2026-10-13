@@ -11,6 +11,8 @@ Control a [LumenCache](https://www.lumencache.com) ReNetA lighting system entire
 - Setup from the UI (host, port, username, password, Prefix Topic, TLS verification).
 - A **connection** `binary_sensor`.
 - A `light` for each socket card the system announces (color temperature for SC-CC models, brightness only otherwise) and for each zone you list in the integration's options (the system cannot list its zones). Brightness, color temperature and transition (fade) work; turning on without parameters restores the last values.
+- A **brightness × color-temperature card** (`custom:lumencache-card`): color temperature across, brightness up, a fade time, and a card editor for every setting. See [The brightness × color card](#the-brightness--color-card).
+- Optionally, the color temperatures your lights can be set to, in the integration's options (for example `2700, 3000, 3500, 4000, 5000`). They set the lights' range and are shown by the card.
 - The inventory is saved between restarts, because the system does not keep it on the broker.
 - Services: `lumencache.set_light` (brightness in 0.1% steps, with color temperature and transition) and `lumencache.send_raw` (any command).
 - A diagnostics download with the host, credentials, Prefix Topic and serial numbers removed.
@@ -36,7 +38,6 @@ Goals:
 
 - Fixtures and zones as `light` entities, with brightness, color temperature and fade.
 - Brightness down to the system's 0.1% minimum through a precise service and the card.
-- **Brightness × color-temperature card**: a 2D pad where one axis is color temperature and the other is brightness, chosen independently, with a fade input below.
 - **Turn-on restores the last settings.** Each fixture keeps its current and last brightness, color temperature and fade. Turning a light on with no parameters restores the last values instead of jumping to 100%. The first-ever turn-on uses the highest brightness and highest color temperature.
 - Zone control and zone membership management.
 - Wall-switch (SW-D) events as Home Assistant `event` entities for use in automations.
@@ -49,7 +50,7 @@ Goals:
 
 ```
 Home Assistant (e.g. in Docker)
- ├─ lumencache-card            Lovelace card (2D brightness × color pad)
+ ├─ lumencache-card            Lovelace card (2D brightness × color pad), served by the integration
  ├─ custom_components/lumencache   thin integration: config flow, entities, services
  └─ pylumencache               protocol library (separate repository, from PyPI)
       │  MQTT over TLS (port 8883)
@@ -72,25 +73,31 @@ Design points:
 
 ## Installation
 
-The integration needs the `pylumencache` package, which is not on PyPI yet. It also needs a recent Home Assistant: the library uses `paho-mqtt` 2.1 or later through `aiomqtt`, and older Home Assistant releases pin version 1.6.
+You need a recent Home Assistant: the library uses `paho-mqtt` 2.1 or later through `aiomqtt`, and older Home Assistant releases pin version 1.6. The `pylumencache` library comes from [PyPI](https://pypi.org/project/pylumencache/); Home Assistant installs it by itself when the integration loads, in Docker too.
 
-### Home Assistant in Docker
+### Through HACS
 
-1. Build the library wheel from a checkout of [pylumencache](https://github.com/vamsi765/pylumencache): `pip wheel . --no-deps -w dist`.
-2. Copy the integration folder `custom_components/lumencache` into your Home Assistant configuration directory (the one mounted at `/config`), so you have `<config>/custom_components/lumencache`. Copy the wheel to `<config>/wheels/`.
-3. Install the wheel inside the container, using your container's name: `docker exec homeassistant pip install /config/wheels/pylumencache-*.whl`
-4. Restart the container, then go to **Settings → Devices & services → Add integration → LumenCache**.
-
-The library is installed inside the container, so recreating the container (for example after pulling a new Home Assistant image) removes it. Run step 3 again afterwards. Once `pylumencache` is on PyPI, Home Assistant installs it by itself and steps 1 and 3 go away.
-
-Through [HACS](https://hacs.xyz), as a custom repository at first:
+[HACS](https://hacs.xyz) as a custom repository at first:
 
 1. In HACS, open the menu and choose **Custom repositories**.
 2. Add `https://github.com/vamsi765/ha-lumencache` with category **Integration**.
 3. Install **LumenCache**, then restart Home Assistant.
 4. Go to **Settings → Devices & services → Add integration → LumenCache**.
 
+To update later: open **LumenCache** in HACS, choose **⋮ → Update information**, then **Update** (or **Redownload**), and restart Home Assistant.
+
 The card is served by the integration itself, so there is no separate card install.
+
+### By hand, for debugging
+
+Use this to try a change quickly, or a build of the library that is not on PyPI, without waiting for a release.
+
+1. Build the library wheel from a checkout of [pylumencache](https://github.com/vamsi765/pylumencache): `pip wheel . --no-deps -w dist`.
+2. Copy the integration folder `custom_components/lumencache` into your Home Assistant configuration directory (the one mounted at `/config`), so you have `<config>/custom_components/lumencache`. Copy the wheel to `<config>/wheels/`.
+3. Install the wheel inside the container, using your container's name: `docker exec homeassistant pip install /config/wheels/pylumencache-*.whl`
+4. Restart the container, then go to **Settings → Devices & services → Add integration → LumenCache**.
+
+The library is installed inside the container, so recreating the container (for example after pulling a new Home Assistant image) removes it. Run step 3 again afterwards. A wheel with a version at or above what `manifest.json` asks for is kept, and Home Assistant does not replace it from PyPI.
 
 ## Configuration
 
@@ -134,22 +141,48 @@ System-level services take an optional `system` field. With one system it is fil
 
 The standard `light.turn_on` / `light.turn_off` services also work, so voice assistants and existing automations behave normally.
 
-## The brightness × color card *(planned)*
+## The brightness × color card
+
+The integration serves the card and loads it in the dashboard by itself, so there is nothing else to install. Add it from the card picker (**LumenCache brightness × colour**), or in YAML:
 
 ```yaml
 type: custom:lumencache-card
-entity: light.living_room
-send_mode: live              # live (throttled) or on_release
-brightness_curve: perceptual # perceptual (log) or linear
-show_fade: true
-fade_presets: [0, 1, 3, 10]
+entity: light.kitchen
 ```
 
-- X axis: color temperature, warm to cool, limited to the fixture's own range.
-- Y axis: brightness. The perceptual curve makes the 0.1% to 5% range usable.
-- Below the pad: a fade time in seconds, with preset chips.
-- Use `entities:` to control several lights at once, including lights from different systems.
-- Works for fixtures and zones, follows external changes (wall switches, other clients), and has a visual editor.
+- **X axis: color temperature.** If the lights have a list of temperatures (the integration's options, or the card's own list), each one is a band of the same width, with its own background color, however far apart they are in kelvin. Without a list the pad is a smooth range.
+- **Y axis: brightness**, on a gamma curve by default so that equal steps look equal. There is a hatched "off" zone under a line at the minimum brightness: dragging down through the line gives off, dragging up from off gives the minimum.
+- **Dragging** moves the handle exactly with your finger. The value changes where the background changes, and the handle settles on it when you let go, over the fade time (at most 3 s; 0.25 s when the fade is 0).
+- **Fade time** sits below the pad, in one of four looks.
+- **Off** puts the handle at the bottom, in the last color band.
+- Keyboard: the arrow keys move between bands and brightness steps.
+
+Everything can be set in the card editor, with no YAML: the light and its name; each temperature, its value and background color (or the integration's list); snapping; the minimum and maximum brightness; the brightness scale; the color of the off/on line; whether the fade shows, its look and its choices; and whether to send while dragging or on release. The editor shows what is wrong with a value and keeps the card at its last good settings until it is fixed. **Copy the settings of another light's card** takes over another card's settings (but not its light or name), so a second light is one step.
+
+In YAML, with the defaults:
+
+```yaml
+type: custom:lumencache-card
+entity: light.kitchen
+name: ""                         # defaults to the entity's name
+color_steps:                     # defaults to the integration's list; a number, or {kelvin, color}
+  - 2700
+  - {kelvin: 3000, color: "#ffb36b"}
+  - 3500
+snap_to_steps: true              # false allows values between neighbouring bands
+min_brightness_pct: 5            # under it the pad means off; 0 for no off zone
+max_brightness_pct: 100
+brightness_curve: gamma          # gamma, perceptual (logarithmic) or linear
+marker_color: "#ffffff"          # the off/on line
+show_fade: true
+fade_style: segments             # segments, slider, stepper or classic (a box with buttons)
+fade_presets: [0, 0.5, 1, 3, 10] # seconds
+send_mode: live                  # live (throttled while dragging) or on_release
+```
+
+A config with a problem (a minimum above the maximum, a temperature listed twice, an unknown value) is refused with a message that says what to change.
+
+The lights are ordinary Home Assistant lights, so the built-in light controls, tile cards and other cards work as well.
 
 ## Multiple systems
 
@@ -168,8 +201,8 @@ Each fixture and zone belongs to exactly one ReNetA system, and systems are full
 
 ```
 ha-lumencache/
-├─ custom_components/lumencache/   Home Assistant integration (and bundled card)
-├─ card/                           Lovelace card source (TypeScript + Lit)
+├─ custom_components/lumencache/   Home Assistant integration
+│  └─ frontend/                    the Lovelace card and its editor (plain JavaScript, no build step)
 ├─ .devcontainer/                  development container
 └─ .github/workflows/
 ```
@@ -180,7 +213,7 @@ ha-lumencache/
 - Protocol quirks live in one folder, so a firmware change touches one place.
 - `mypy --strict`, `ruff`, `pytest`, `hassfest` and HACS validation run in CI.
 - Tests use recorded real traffic and a fake controller, so most development never touches live lights. Live tests on real hardware follow a safety checklist (one known-good fixture; no factory reset).
-- The card has unit tests for its coordinate math plus a small Playwright suite against a mocked `hass` object.
+- The card is checked in a headless browser against a mocked `hass` object; the integration tests check that the card is registered and served.
 
 ### Protocol and capture tool
 
@@ -192,7 +225,7 @@ The protocol library, the protocol spec (`asyncapi.yaml`, `protocol.md`) and the
 2. **Library core**: typed models, async client, CLI with capture and diff, tests.
 3. **Dev environment**: fake controller and devcontainer.
 4. **Integration MVP**: config flow, lights with brightness, color temperature and fade, last-value restore.
-5. **Card v1**: the 2D pad and fade input.
+5. **Card v1**: the 2D pad, fade input and card editor (done).
 6. **Zones and events**: zone lights, membership services, switch events.
 7. **Commissioning and configuration services**, including guarded factory reset.
 8. **Diagnostics and repairs.**
