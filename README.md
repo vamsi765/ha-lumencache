@@ -180,8 +180,21 @@ marker_color: "#ffffff"          # the off/on line
 show_fade: true
 fade_style: segments             # segments, slider, stepper or classic (a box with buttons)
 fade_presets: [0, 0.5, 1, 3, 10] # seconds
+show_presets: true
+preset_hold_ms: 550              # milliseconds to hold a preset to change it
+preset_ring: accent              # accent (the theme's), preset (its own colour), or any CSS colour
 send_mode: live                  # live (throttled while dragging) or on_release
 ```
+
+### Presets
+
+Right under the title the card shows presets: saved brightness and color temperature, as named dots with a ring for the brightness, in a row you swipe sideways. The active one is kept in view, and **…** stays at the right, under the power button, outside the scrolling part. Tap one to apply it (with the fade time chosen on the card). **Hold** one for about half a second (`preset_hold_ms`, 550 by default, 300 to 3000) to change it, with a ring filling as you hold; moving your finger or the mouse more than a few pixels, or scrolling the strip, cancels the hold: a sheet offers *Save these values* (the light's current values), *Rename*, *Reset to shared* and *Hide*. The **…** button opens **Presets**, where you switch presets on and off for yourself, delete your own, and add one from the light's current values (or a few typical ones to start).
+
+- **Per light and per person.** Presets belong to a light, so every card for that light shows the same ones, and each Home Assistant user has their own list. Nobody sees another person's presets.
+- **Shared presets.** An admin can share presets with everyone. In **Presets** an admin also sees every member's presets for the light, and can *Add to shared* or *Dismiss* them, and can update, rename or remove a shared preset. A member who changes a shared preset gets their own copy of it, and *Reset to shared* puts the shared one back. Each person can hide any preset from their own card.
+- **Stored by the integration**, in Home Assistant's storage and not in the dashboard, so they follow you across devices and survive card edits. They are kept under the light's registry id, so renaming the entity keeps them.
+- The ring round each dot shows its brightness. Its colour is the theme's accent by default (`preset_ring: accent`), can be each preset's own colour (`preset`), or any colour you choose; the editor has a picker. A very light colour can be hard to see on a light theme.
+- All switched-on presets show, however many; the strip scrolls. `show_presets: false` turns them off. There is a limit of 30 presets per list, only as a guard.
 
 A config with a problem (a minimum above the maximum, a temperature listed twice, an unknown value) is refused with a message that says what to change.
 

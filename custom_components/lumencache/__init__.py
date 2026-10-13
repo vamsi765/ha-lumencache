@@ -1,6 +1,7 @@
 """LumenCache ReNetA lighting."""
 from __future__ import annotations
 
+import hashlib
 import logging
 from dataclasses import dataclass
 from pathlib import Path
@@ -30,6 +31,7 @@ from .const import (
     SAVE_DELAY,
     SERVICE_SEND_RAW,
 )
+from .presets import PresetStore, async_register
 
 _LOGGER = logging.getLogger(__name__)
 PLATFORMS = [Platform.BINARY_SENSOR, Platform.LIGHT]
@@ -73,8 +75,13 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
             raise HomeAssistantError("This connection does not take raw commands") from err
 
     hass.services.async_register(DOMAIN, SERVICE_SEND_RAW, send_raw, schema=SEND_RAW_SCHEMA)
+    presets = PresetStore(hass)
+    await presets.async_load()
+    async_register(hass, presets)
     await hass.http.async_register_static_paths([StaticPathConfig(CARD_URL, str(CARD_FILE), cache_headers=False)])
-    add_extra_js_url(hass, CARD_URL)
+    # The version in the address makes browsers fetch the card again after an update, not keep the old one.
+    digest = await hass.async_add_executor_job(lambda: hashlib.sha256(CARD_FILE.read_bytes()).hexdigest()[:10])
+    add_extra_js_url(hass, f"{CARD_URL}?v={digest}")
     return True
 
 

@@ -8,6 +8,8 @@ const MAX_GLIDE_S = 3;         // and the longest it takes, however long the fad
 const DEFAULT_RANGE = [2700, 5000];
 const DEFAULT_STEPS = [2700, 3000, 3500, 4000, 5000];   // what the editor offers when it has no list to start from
 const FADE_STYLES = ["segments", "slider", "stepper", "classic"];
+const HOLD_MOVE_PX = 10;       // moving further than this while holding cancels it (it is a drag, not a hold)
+const PRESET_EVENT = "lumencache_presets_updated";
 const SEND_MODES = ["live", "on_release"];
 const LAYOUTS = ["pad", "sliders"];
 
@@ -25,12 +27,15 @@ export const DEFAULTS = {
   show_fade: true,
   fade_style: "segments",       // segments, slider, stepper or classic (a box with buttons)
   fade_presets: [0, 0.5, 1, 3, 10],
+  show_presets: true,
+  preset_hold_ms: 550,          // how long a preset is held to change it (a tap is shorter)
+  preset_ring: "accent",        // the ring round a preset: accent (the theme's), preset (its own colour) or any CSS colour
 };
 
 const STYLE = `
   :host { display: block; }
   [hidden] { display: none !important; }
-  ha-card { padding: 16px; display: flex; flex-direction: column; gap: 12px; color: var(--primary-text-color); }
+  ha-card { position: relative; padding: 16px; display: flex; flex-direction: column; gap: 12px; color: var(--primary-text-color); }
   header { display: flex; align-items: center; gap: 12px; }
   .title { flex: 1; min-width: 0; }
   .name { font-size: 16px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -100,6 +105,54 @@ const STYLE = `
     font-variant-numeric: tabular-nums; white-space: nowrap; }
   .axes { display: flex; justify-content: space-between; font-size: 11px; color: var(--secondary-text-color); }
   .msg { color: var(--error-color); font-size: 13px; }
+
+  /* Presets: dots with a brightness ring */
+  .presets { display: flex; align-items: flex-start; gap: 6px; min-width: 0; }
+  .plist { display: flex; gap: 6px; min-width: 0; flex: 1; }
+  .plist { overflow-x: auto; scroll-snap-type: x proximity; scrollbar-width: none; padding: 2px;
+    -webkit-mask: linear-gradient(to right, transparent 0, #000 8px, #000 calc(100% - 14px), transparent 100%);
+    mask: linear-gradient(to right, transparent 0, #000 8px, #000 calc(100% - 14px), transparent 100%); }
+  .plist::-webkit-scrollbar { display: none; }
+  .pb { position: relative; flex: none; border: 0; background: transparent; padding: 0; color: var(--primary-text-color);
+    display: flex; flex-direction: column; align-items: center; gap: 4px; width: 64px; scroll-snap-align: center;
+    -webkit-user-select: none; user-select: none; touch-action: manipulation; -webkit-touch-callout: none; }
+  .pb .ring { width: 48px; height: 48px; border-radius: 50%; display: grid; place-items: center;
+    background: conic-gradient(var(--rc, var(--primary-color)) calc(var(--b) * 1%), var(--divider-color) 0); }
+  .pb .ring i { width: 36px; height: 36px; border-radius: 50%; border: 2px solid var(--card-background-color); }
+  .pb b { font-weight: 500; font-size: 11px; max-width: 64px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pb.active .ring { box-shadow: 0 0 0 2px var(--rc, var(--primary-color)); }
+  .pb.more { width: 40px; margin-top: 4px; scroll-snap-align: none; }   /* under the power button, outside the scrolling part */
+  .pb.more .ring { width: 40px; height: 40px; background: var(--divider-color); font-size: 17px; letter-spacing: 1px; color: var(--primary-text-color); }
+  .pb.pressing::after { content: ""; position: absolute; left: 50%; top: 0; width: 48px; height: 48px; margin-left: -24px; border-radius: 50%; pointer-events: none;
+    background: conic-gradient(var(--primary-color) calc(var(--p, 0) * 1%), transparent 0);
+    -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 4px), #000 0); mask: radial-gradient(farthest-side, transparent calc(100% - 4px), #000 0); }
+  .addone { border: 1px dashed var(--divider-color); background: transparent; border-radius: 18px; padding: 6px 12px; font-size: 13px; color: var(--secondary-text-color); }
+
+  /* The sheet for one preset, and the manage panel */
+  .overlay { position: absolute; inset: 0; z-index: 5; background: var(--card-background-color); border-radius: inherit;
+    padding: 16px; display: flex; flex-direction: column; gap: 10px; overflow-y: auto; }
+  .overlay h4 { margin: 0; font-size: 15px; font-weight: 500; }
+  .obar { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+  .ohint { font-size: 12px; color: var(--secondary-text-color); font-variant-numeric: tabular-nums; }
+  .ogroup { font-size: 11px; letter-spacing: .07em; text-transform: uppercase; color: var(--secondary-text-color); margin-top: 6px; }
+  .obtns { display: flex; flex-wrap: wrap; gap: 8px; }
+  .obtn { border: 1px solid var(--divider-color); background: transparent; border-radius: 8px; padding: 6px 12px; font-size: 13px; }
+  .obtn.primary { background: var(--primary-color); color: var(--text-primary-color, #fff); border-color: transparent; }
+  .obtn.quiet { border-color: transparent; color: var(--secondary-text-color); }
+  .obtn:disabled { opacity: .45; cursor: default; }
+  .oitem { display: flex; align-items: center; gap: 8px; padding: 4px 0; font-size: 14px; }
+  .oitem .sw { width: 20px; height: 20px; border-radius: 50%; flex: none; border: 1px solid rgba(0,0,0,.2); }
+  .oitem .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .oitem .nm small { display: block; color: var(--secondary-text-color); font-size: 11px; }
+  .oitem.off .nm, .oitem.off .sw { opacity: .45; }
+  .oitem input[type=text], .overlay input[type=text] { font: inherit; padding: 5px 8px; border-radius: 6px; min-width: 0; flex: 1;
+    border: 1px solid var(--divider-color); background: var(--card-background-color); color: var(--primary-text-color); }
+  .tgl { appearance: none; -webkit-appearance: none; width: 36px; height: 20px; border-radius: 10px; background: var(--divider-color);
+    position: relative; cursor: pointer; flex: none; transition: background .15s; }
+  .tgl::after { content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff;
+    transition: left .15s; box-shadow: 0 1px 2px rgba(0,0,0,.35); }
+  .tgl:checked { background: var(--primary-color); }
+  .tgl:checked::after { left: 18px; }
 
   /* Fade time: four looks. */
   .fade { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
@@ -226,11 +279,16 @@ export function validateConfig(config) {
     bad("max_brightness_pct", `The maximum brightness (${max ?? DEFAULTS.max_brightness_pct} %) must be higher than the minimum (${min ?? DEFAULTS.min_brightness_pct} %).`);
   }
   oneOf("brightness_curve", Object.keys(curves), "The brightness scale");
+  number("preset_hold_ms", 300, 3000, "The hold time");
   oneOf("layout", LAYOUTS, "The layout");
+  if (given("preset_ring") && c.preset_ring !== "accent" && c.preset_ring !== "preset" && !isColor(c.preset_ring)) {
+    bad("preset_ring", `"${c.preset_ring}" is not accent, preset or a colour.`);
+  }
   oneOf("fade_style", FADE_STYLES, "The fade look");
   oneOf("send_mode", SEND_MODES, "Sending");
   flag("snap_to_steps", "Snapping");
   flag("show_fade", "Showing the fade time");
+  flag("show_presets", "Showing the presets");
   number("fade", 0, 6553, "The starting fade time");
   if (given("marker_color") && !isColor(c.marker_color)) bad("marker_color", `"${c.marker_color}" is not a colour.`);
 
@@ -290,12 +348,24 @@ class LumenCacheCard extends HTMLElement {
     if (errors.length) throw new Error(errors.map((e) => e.message).join(" "));
     this._config = { entity: config.entity, ...resolveConfig(config) };
     this._fade = Number.isFinite(Number(config.fade)) ? Number(config.fade) : 0;
+    this._presets = null;
+    this._presetKey = "";
+    this._overlay = null;
     this._build();
     this._render();
+    this._loadPresets();
+  }
+
+  connectedCallback() { this._subscribePresets(); }
+
+  disconnectedCallback() {
+    if (this._unsub) { this._unsub(); this._unsub = null; }
   }
 
   set hass(hass) {
+    const first = !this._hass;
     this._hass = hass;
+    if (first && this._config) { this._loadPresets(); this._subscribePresets(); }
     const state = this._config && hass.states[this._config.entity];
     if (state && state.state === "on" && state.attributes.color_temp_kelvin) this._lastKelvin = state.attributes.color_temp_kelvin;
     // The released value stands in until the entity reports a new state, so the handle does not slide back first.
@@ -512,6 +582,7 @@ class LumenCacheCard extends HTMLElement {
           <div class="title"><div class="name"></div><div class="readout"></div></div>
           <button class="power" aria-label="Power" aria-pressed="false">${POWER_ICON}</button>
         </header>
+        <div class="presets" hidden><div class="plist"></div></div>
         ${this._config.layout === "sliders" ? sliders : pad}
         <div class="fade"></div>
         <div class="msg" hidden></div>
@@ -544,6 +615,8 @@ class LumenCacheCard extends HTMLElement {
       el.addEventListener("keydown", (e) => this._key(e, role));
     }
     this._power.addEventListener("click", () => this._toggle());
+    this._presetBox = $(".presets");
+    this._presetList = $(".plist");
     this._buildFade();
     this._ticksKey = "";   // the ticks are drawn in _render, once the entity's range is known
   }
@@ -737,6 +810,7 @@ class LumenCacheCard extends HTMLElement {
       : "Off";
     for (const { el } of this._surfaces) el.setAttribute("aria-valuetext", this._readout.textContent);
     this._renderFade();
+    this._renderPresets();
     this._msg.hidden = !this._error;
     this._msg.textContent = this._error;
   }
@@ -766,12 +840,16 @@ class LumenCacheCard extends HTMLElement {
     const final = this._fromPointer(event);
     this._drag = null;
     clearTimeout(this._timer);
-    this._settled = { pct: final.pct, kelvin: final.kelvin, since: this._stateObj };
-    clearTimeout(this._settleTimer);
-    // In case no new state arrives; a long fade keeps the value until it has finished.
-    this._settleTimer = setTimeout(() => { this._settled = null; this._render(); }, Math.max(SETTLE_MS, this._fade * 1000 + 500));
+    this._settle(final);
     this._send(final);
     this._render();
+  }
+
+  /** Show a value we have just sent until the entity reports its own; a long fade keeps it until the fade is over. */
+  _settle({ pct, kelvin }) {
+    this._settled = { pct, kelvin, since: this._stateObj };
+    clearTimeout(this._settleTimer);
+    this._settleTimer = setTimeout(() => { this._settled = null; this._render(); }, Math.max(SETTLE_MS, this._fade * 1000 + 500));
   }
 
   _key(event, role = "pad") {
@@ -836,6 +914,345 @@ class LumenCacheCard extends HTMLElement {
   }
 }
 
+// --- presets: saved brightness and color temperature, kept by the integration -------------------------
+
+const PRESET_METHODS = {
+  /** What the card shows for the light: shared presets (a personal stand-in replacing its shared one), then the user's own. */
+  _presetItems() {
+    const { shared, personal, hidden } = this._presets;
+    const standIn = (s) => personal.find((p) => p.of === s.id);
+    const items = [
+      ...shared.map((s) => ({ ...(standIn(s) || s), hideKey: s.id, sharedId: s.id, isShared: !standIn(s) })),
+      ...personal.filter((p) => !p.of).map((p) => ({ ...p, hideKey: p.id, sharedId: null, isShared: false })),
+    ];
+    return items.map((p) => ({ ...p, hidden: hidden.includes(p.hideKey) }));
+  },
+
+  _isActive(p) {
+    const on = this._stateObj && this._stateObj.state === "on";
+    const cur = this._current;
+    return Boolean(on && Math.abs(p.brightness - cur.pct) <= 1 && (p.kelvin == null || !this._tunable || Math.abs(p.kelvin - cur.kelvin) <= 10));
+  },
+
+  _presetButton(p) {
+    const b = document.createElement("button");
+    b.className = `pb${this._isActive(p) ? " active" : ""}`;
+    b.title = `${p.name}: ${p.kelvin ? p.kelvin + " K · " : ""}${p.brightness}%`;
+    b.setAttribute("aria-label", b.title);
+    const color = p.kelvin && this._tunable ? this._colorOf(p.kelvin) : kelvinToCss(4000);
+    const ring = this._config.preset_ring;
+    if (ring === "preset") b.style.setProperty("--rc", color);
+    else if (ring !== "accent") b.style.setProperty("--rc", ring);
+    b.innerHTML = `<span class="ring" style="--b:${Math.min(100, (p.brightness * 100) / this._max)}"><i style="background:${color}"></i></span><b>${esc(p.name)}</b>`;
+    this._wireHold(b, p);
+    return b;
+  },
+
+  /** A tap applies the preset; holding fills a ring and opens the sheet to change it. */
+  _wireHold(b, p) {
+    let start = 0;
+    let raf = 0;
+    let held = false;
+    let from = null;
+    const stop = () => { cancelAnimationFrame(raf); b.classList.remove("pressing"); b.style.removeProperty("--p"); };
+    const tick = () => {
+      const f = Math.min(1, (performance.now() - start) / this._config.preset_hold_ms);
+      b.style.setProperty("--p", f * 100);
+      if (f >= 1) { held = true; stop(); this._openSheet(p); } else raf = requestAnimationFrame(tick);
+    };
+    b.addEventListener("pointerdown", (e) => {
+      if (e.button) return;
+      held = false;
+      from = [e.clientX, e.clientY];
+      start = performance.now();
+      b.classList.add("pressing");
+      raf = requestAnimationFrame(tick);
+    });
+    b.addEventListener("pointerup", () => {
+      const tap = b.classList.contains("pressing") && !held;
+      stop();
+      if (tap) this._applyPreset(p);
+    });
+    for (const type of ["pointercancel", "pointerleave"]) b.addEventListener(type, stop);
+    b.addEventListener("pointermove", (e) => {
+      if (from && Math.hypot(e.clientX - from[0], e.clientY - from[1]) > HOLD_MOVE_PX) stop();   // a swipe, not a hold
+    });
+    b.addEventListener("contextmenu", (e) => { e.preventDefault(); stop(); this._openSheet(p); });
+    b.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && e.shiftKey) { e.preventDefault(); this._openSheet(p); }
+    });
+  },
+
+  _applyPreset(p) {
+    const value = { pct: p.brightness, kelvin: p.kelvin && this._tunable ? p.kelvin : this._current.kelvin };
+    this._settle(value);
+    this._send(value);
+    this._render();
+  },
+
+  /** A strip of dots under the title that you swipe sideways, with the active one kept in view. "…" stays at the right, under the power button. */
+  _renderPresets() {
+    const box = this._presetBox;
+    if (!this._config.show_presets || !this._presets) { box.hidden = true; return; }
+    box.hidden = false;
+    const list = this._presetList;
+    const items = this._presetItems().filter((p) => !p.hidden);
+    const key = JSON.stringify([items.map((p) => [p.id, p.name, p.kelvin, p.brightness, this._isActive(p)]), this._range, this._max, this._tunable, this._config.preset_ring]);
+    if (key === this._presetKey) return;
+    this._presetKey = key;
+    const scrolled = list.scrollLeft;
+    list.innerHTML = "";
+    box.querySelector(".more")?.remove();
+    for (const p of items) list.appendChild(this._presetButton(p));
+    if (!items.length) {
+      const add = document.createElement("button");
+      add.className = "addone";
+      add.textContent = "＋ Add a preset";
+      add.addEventListener("click", () => this._openManage());
+      list.appendChild(add);
+    } else {
+      const more = document.createElement("button");
+      more.className = "pb more";
+      more.setAttribute("aria-label", "Manage presets");
+      more.innerHTML = '<span class="ring">…</span>';
+      more.addEventListener("click", () => this._openManage());
+      box.appendChild(more);
+    }
+    list.scrollLeft = scrolled;
+    const active = list.querySelector(".active");
+    if (active) list.scrollLeft = active.offsetLeft - list.clientWidth / 2 + active.offsetWidth / 2;
+  },
+
+  // --- talking to the integration ------------------------------------------------------------
+
+  async _loadPresets() {
+    if (!this._hass || !this._config.show_presets || this._loading) return;
+    this._loading = true;
+    try {
+      this._presets = await this._hass.callWS({ type: "lumencache/presets/get", entity_id: this._config.entity });
+    } catch (err) {
+      this._presets = null;   // an integration without presets, or not a LumenCache light: show none
+    }
+    this._loading = false;
+    this._presetKey = "";
+    this._render();
+    if (this._overlay) this._renderOverlay();
+  },
+
+  async _subscribePresets() {
+    if (this._unsub || !this._hass || !this._hass.connection || !this._config.show_presets) return;
+    try {
+      this._unsub = await this._hass.connection.subscribeEvents((event) => {
+        if (event.data.entity_id === this._config.entity) this._loadPresets();
+      }, PRESET_EVENT);
+    } catch (err) { /* no live updates: the list refreshes on the next load */ }
+  },
+
+  /** One command, then the list is read again. Returns false and shows the problem if it failed. */
+  async _preset(command, fields = {}) {
+    try {
+      const result = await this._hass.callWS({ type: `lumencache/presets/${command}`, entity_id: this._config.entity, ...fields });
+      this._error = "";
+      await this._loadPresets();
+      return result === undefined ? true : result;
+    } catch (err) {
+      this._error = (err && err.message) || "That did not work";
+      this._render();
+      if (this._overlay) this._renderOverlay();   // the panel covers the card, so show it there
+      return false;
+    }
+  },
+
+  // --- the sheet for one preset ----------------------------------------------------------------
+
+  _openSheet(p) {
+    this._error = "";
+    this._overlay = { mode: "sheet", preset: p, rename: false };
+    this._renderOverlay();
+  },
+
+  _openManage() {
+    this._error = "";
+    this._overlay = { mode: "manage", review: null, naming: null };
+    if (this._presets && this._presets.is_admin) this._loadReview();
+    this._renderOverlay();
+  },
+
+  async _loadReview() {
+    try {
+      this._overlay.review = await this._hass.callWS({ type: "lumencache/presets/review", entity_id: this._config.entity });
+    } catch (err) {
+      this._overlay.review = [];
+    }
+    if (this._overlay && this._overlay.mode === "manage") this._renderOverlay();
+  },
+
+  _closeOverlay() {
+    this._error = "";
+    this._overlay = null;
+    this._render();
+    this._root.querySelector(".overlay")?.remove();
+  },
+
+  /** The values the light has now, to save into a preset; null when it is off. */
+  _nowValues() {
+    const cur = this._current;
+    const on = this._stateObj && this._stateObj.state === "on";
+    return on && cur.pct > 0 ? { brightness: cur.pct, kelvin: this._tunable ? cur.kelvin : null } : null;
+  },
+
+  _renderOverlay() {
+    const card = this._root.querySelector("ha-card");
+    let el = card.querySelector(".overlay");
+    if (!this._overlay) { el?.remove(); return; }
+    if (!el) { el = document.createElement("div"); el.className = "overlay"; card.appendChild(el); }
+    el.innerHTML = "";
+    this._overlay.mode === "sheet" ? this._drawSheet(el) : this._drawManage(el);
+  },
+
+  _h(tag, attrs = {}, ...children) {
+    const el = document.createElement(tag);
+    for (const [k, v] of Object.entries(attrs)) {
+      if (k === "text") el.textContent = v;
+      else if (k.startsWith("on")) el.addEventListener(k.slice(2), v);
+      else if (v === true) el.setAttribute(k, "");
+      else if (v !== false && v != null) el.setAttribute(k, v);
+    }
+    for (const c of children) if (c) el.append(c);
+    return el;
+  },
+
+  _drawSheet(el) {
+    const h = this._h.bind(this);
+    const { preset: p, rename } = this._overlay;
+    const now = this._nowValues();
+    const fmt = (kelvin, pct) => `${kelvin ? kelvin + " K · " : ""}${pct} %`;
+    const standIn = !p.isShared && p.sharedId;
+    el.append(h("div", { class: "obar" }, h("h4", { text: p.name }), h("button", { class: "obtn quiet", "aria-label": "Close", text: "✕", onclick: () => this._closeOverlay() })));
+    el.append(h("div", { class: "ohint", text: now ? `Now: ${fmt(now.kelvin, now.brightness)}   (was ${fmt(p.kelvin, p.brightness)})` : "Turn the light on to save its values here." }));
+    if (rename) {
+      const input = h("input", { type: "text", maxlength: 24, value: this._overlay.draft ?? p.name, "aria-label": "Name" });
+      input.addEventListener("input", () => { this._overlay.draft = input.value; });
+      const ok = async () => { if (await this._saveOver(p, { name: input.value })) this._closeOverlay(); };
+      input.addEventListener("keydown", (e) => { if (e.key === "Enter") ok(); });
+      el.append(h("div", { class: "obtns" }, input, h("button", { class: "obtn primary", text: "Rename", onclick: ok })));
+      setTimeout(() => { input.focus(); input.select(); }, 0);
+      return;
+    }
+    const buttons = h("div", { class: "obtns" });
+    buttons.append(h("button", { class: "obtn primary", text: p.isShared ? "Save as my own copy" : "Save these values", disabled: !now,
+      onclick: async () => { if (await this._saveOver(p, { ...now })) this._closeOverlay(); } }));
+    buttons.append(h("button", { class: "obtn", text: "Rename", onclick: () => { this._overlay.rename = true; this._renderOverlay(); } }));
+    if (standIn) buttons.append(h("button", { class: "obtn", text: "Reset to shared", onclick: async () => { if (await this._preset("delete", { preset_id: p.id })) this._closeOverlay(); } }));
+    buttons.append(h("button", { class: "obtn quiet", text: "Hide", onclick: async () => { if (await this._preset("hide", { preset_id: p.hideKey, hidden: true })) this._closeOverlay(); } }));
+    el.append(buttons);
+    if (this._error) el.append(h("div", { class: "ohint", style: "color:var(--error-color)", text: this._error }));
+  },
+
+  /** Save over a preset with changed fields. Changing a shared preset makes the user's own copy of it. */
+  _saveOver(p, changes) {
+    const next = { name: p.name, kelvin: p.kelvin, brightness: p.brightness, ...changes };
+    const fields = { name: next.name, kelvin: next.kelvin, brightness: next.brightness };
+    if (p.isShared) fields.of = p.id;
+    else fields.preset_id = p.id;
+    return this._preset("save", fields);
+  },
+
+  _drawManage(el) {
+    const h = this._h.bind(this);
+    const { shared, personal, hidden, is_admin: admin } = this._presets || { shared: [], personal: [], hidden: [] };
+    const now = this._nowValues();
+    const swatch = (p) => h("span", { class: "sw", style: `background:${p.kelvin ? this._colorOf(p.kelvin) : kelvinToCss(4000)}` });
+    const label = (p) => h("span", { class: "nm" }, p.name, h("small", { text: `${p.kelvin ? p.kelvin + " K · " : ""}${p.brightness} %` }));
+    const toggle = (key, name) => h("input", { type: "checkbox", class: "tgl", "aria-label": `Show ${name}`, checked: !hidden.includes(key),
+      onchange: (e) => this._preset("hide", { preset_id: key, hidden: !e.target.checked }) });
+    el.append(h("div", { class: "obar" }, h("h4", { text: "Presets" }), h("button", { class: "obtn quiet", "aria-label": "Close", text: "✕", onclick: () => this._closeOverlay() })));
+    if (this._error) el.append(h("div", { class: "ohint", style: "color:var(--error-color)", text: this._error }));
+
+    if (shared.length) {
+      el.append(h("div", { class: "ogroup", text: "Shared" }));
+      for (const s of shared) {
+        const row = h("div", { class: `oitem${hidden.includes(s.id) ? " off" : ""}` }, swatch(s), label(s));
+        if (admin) {
+          row.append(h("button", { class: "obtn quiet", text: "Update", title: "Set to the light's current values", disabled: !now,
+            onclick: () => this._preset("update_shared", { preset_id: s.id, ...now }) }));
+          row.append(h("button", { class: "obtn quiet", text: "Remove", onclick: () => this._preset("unshare", { preset_id: s.id }) }));
+        }
+        row.append(toggle(s.id, s.name));
+        el.append(row);
+      }
+    }
+
+    el.append(h("div", { class: "ogroup", text: "Mine" }));
+    const mine = personal.filter((p) => !p.of);
+    for (const p of mine) {
+      const row = h("div", { class: `oitem${hidden.includes(p.id) ? " off" : ""}` }, swatch(p), label(p));
+      row.append(h("button", { class: "obtn quiet", text: "Delete", onclick: () => this._preset("delete", { preset_id: p.id }) }));
+      row.append(toggle(p.id, p.name));
+      el.append(row);
+    }
+    if (!mine.length) el.append(h("div", { class: "ohint", text: "None yet. Set the light how you like it, then add it here." }));
+
+    const naming = this._overlay.naming;
+    if (naming === null) {
+      const buttons = h("div", { class: "obtns" });
+      buttons.append(h("button", { class: "obtn", text: "＋ New from the current values", disabled: !now,
+        onclick: () => { this._overlay.naming = { shared: false }; this._renderOverlay(); } }));
+      if (!shared.length && !mine.length) buttons.append(h("button", { class: "obtn", text: "Add typical ones", onclick: () => this._addTypical() }));
+      if (admin) buttons.append(h("button", { class: "obtn", text: "＋ Share the current values", disabled: !now,
+        onclick: () => { this._overlay.naming = { shared: true }; this._renderOverlay(); } }));
+      el.append(buttons);
+      if (!now) el.append(h("div", { class: "ohint", text: "Turn the light on to save its values." }));
+    } else {
+      const input = h("input", { type: "text", maxlength: 24, placeholder: "Name", "aria-label": "Name", value: naming.draft || "" });
+      input.addEventListener("input", () => { naming.draft = input.value; });
+      const ok = async () => {
+        const name = input.value.trim();
+        if (!name) return;
+        const done = await this._preset(naming.shared ? "add_shared" : "save", { name, ...now });
+        if (done) { this._overlay.naming = null; this._renderOverlay(); }
+      };
+      input.addEventListener("keydown", (e) => { if (e.key === "Enter") ok(); });
+      el.append(h("div", { class: "obtns" }, input, h("button", { class: "obtn primary", text: naming.shared ? "Share" : "Add", onclick: ok }),
+        h("button", { class: "obtn quiet", text: "Cancel", onclick: () => { this._overlay.naming = null; this._renderOverlay(); } })));
+      setTimeout(() => input.focus(), 0);
+    }
+
+    if (admin) this._drawReview(el, swatch, label);
+  },
+
+  _drawReview(el, swatch, label) {
+    const h = this._h.bind(this);
+    const review = this._overlay.review;
+    el.append(h("div", { class: "ogroup", text: "Members' presets (admin)" }));
+    if (review === null) { el.append(h("div", { class: "ohint", text: "Loading…" })); return; }
+    if (!review.length) { el.append(h("div", { class: "ohint", text: "Nothing to review." })); return; }
+    for (const group of review) {
+      el.append(h("div", { class: "ohint", text: group.user_name }));
+      for (const p of group.presets) {
+        const row = h("div", { class: "oitem" }, swatch(p), label(p));
+        if (p.shared) row.append(h("span", { class: "ohint", text: "shared" }));
+        else {
+          const act = (command) => async () => { if (await this._preset(command, { user_id: group.user_id, preset_id: p.id })) this._loadReview(); };
+          row.append(h("button", { class: "obtn primary", text: "Add to shared", onclick: act("share") }));
+          row.append(h("button", { class: "obtn quiet", text: "Dismiss", onclick: act("dismiss") }));
+        }
+        el.append(row);
+      }
+    }
+  },
+
+  async _addTypical() {
+    const brightest = this._max;
+    const [lo, hi] = this._range;
+    const typical = [["Bright", hi, brightest], ["Relax", lo, Math.max(this._min, 30)], ["Night", lo, this._min]];
+    for (const [name, kelvin, brightness] of typical) {
+      if (!await this._preset("save", { name, kelvin: this._tunable ? kelvin : null, brightness })) return;
+    }
+  },
+};
+Object.assign(LumenCacheCard.prototype, PRESET_METHODS);
+
 // --- the editor: every setting above, in Home Assistant's card editor ------------
 
 const EDITOR_STYLE = `
@@ -872,7 +1289,7 @@ const EDITOR_STYLE = `
 
 const RECENT_KEY = "lumencache-card:recent";
 const CARD_TYPE = "custom:lumencache-card";
-const COPIED = ["layout", "send_mode", "brightness_curve", "min_brightness_pct", "max_brightness_pct", "color_steps", "snap_to_steps",
+const COPIED = ["layout", "show_presets", "preset_ring", "preset_hold_ms", "send_mode", "brightness_curve", "min_brightness_pct", "max_brightness_pct", "color_steps", "snap_to_steps",
   "marker_color", "show_fade", "fade_style", "fade_presets"];   // what "copy from another card" takes over
 
 /** Every lumencache card in a dashboard config, however deep in stacks, grids and sections. */
@@ -999,6 +1416,7 @@ class LumenCacheCardEditor extends HTMLElement {
     const c = { ...DEFAULTS, ...this._draft };
     const own = Array.isArray(this._draft.color_steps);
     const rows = this._rows();
+    const ringKind = c.preset_ring === "accent" || c.preset_ring === "preset" ? c.preset_ring : "custom";
     const lights = this._lights();
     const others = this._others();
     const option = (value, label, current) => `<option value="${esc(value)}"${value === current ? " selected" : ""}>${esc(label)}</option>`;
@@ -1068,6 +1486,19 @@ class LumenCacheCardEditor extends HTMLElement {
           <label class="row"><span>Choices, in seconds (0 is instant)</span><input type="text" data-role="presets" value="${esc((Array.isArray(c.fade_presets) ? c.fade_presets : []).join(", "))}"></label>
         </fieldset>
 
+        <fieldset><legend>Presets</legend>
+          <label class="row"><span>Show them</span><input type="checkbox" data-key="show_presets" ${c.show_presets ? "checked" : ""}></label>
+          <label class="row"><span>Ring colour</span>
+            <select data-role="ring">
+              ${option("accent", "The theme's accent", ringKind)}
+              ${option("preset", "The preset's own colour", ringKind)}
+              ${option("custom", "A colour I choose", ringKind)}
+            </select></label>
+          ${ringKind === "custom" ? `<label class="row"><span>Colour</span><input type="color" data-role="ringcolor" value="${esc(toHex(c.preset_ring) || "#ffa726")}"></label>` : ""}
+          <label class="row"><span>Hold to change, in ms (a tap is shorter)</span><input type="number" data-key="preset_hold_ms" step="50" value="${shown(c.preset_hold_ms)}"></label>
+          <p class="hint">Presets are saved for each light and each person, and an admin can share them with everyone. Hold a preset on the card to change it.</p>
+        </fieldset>
+
         <fieldset><legend>Sending</legend>
           <label class="row"><span>While dragging</span>
             <select data-key="send_mode">
@@ -1082,7 +1513,7 @@ class LumenCacheCardEditor extends HTMLElement {
 
   _wire() {
     const q = (sel) => [...this._root.querySelectorAll(sel)];
-    const numberKeys = new Set(["min_brightness_pct", "max_brightness_pct"]);
+    const numberKeys = new Set(["min_brightness_pct", "max_brightness_pct", "preset_hold_ms"]);
 
     q("[data-key]").forEach((el) => el.addEventListener("change", () => {
       const key = el.dataset.key;
@@ -1097,6 +1528,14 @@ class LumenCacheCardEditor extends HTMLElement {
       else this._setRows(this._rows());
       this._render();
     });
+
+    const ring = this._root.querySelector('[data-role="ring"]');
+    if (ring) ring.addEventListener("change", () => {
+      this._set("preset_ring", ring.value === "custom" ? (toHex(this._draft.preset_ring) || "#ffa726") : ring.value);
+      this._render();
+    });
+    const ringColor = this._root.querySelector('[data-role="ringcolor"]');
+    if (ringColor) ringColor.addEventListener("change", () => this._set("preset_ring", ringColor.value));
 
     q('[data-role="presets"]').forEach((el) => el.addEventListener("change", () => {
       const parts = el.value.split(",").map((t) => t.trim()).filter((t) => t !== "");
