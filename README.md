@@ -150,14 +150,16 @@ type: custom:lumencache-card
 entity: light.kitchen
 ```
 
-- **X axis: color temperature.** If the lights have a list of temperatures (the integration's options, or the card's own list), each one is a band of the same width, with its own background color, however far apart they are in kelvin. Without a list the pad is a smooth range.
-- **Y axis: brightness**, on a gamma curve by default so that equal steps look equal. There is a hatched "off" zone under a line at the minimum brightness: dragging down through the line gives off, dragging up from off gives the minimum.
+The card has two layouts, chosen with `layout`. **Pad** (the default) is described below. **Sliders** is the plain version: two upright sliders side by side, one for brightness and one for color temperature (warm at the bottom), which suits a phone held upright, with the same bands, off zone, snapping, fade time and editor. Both send the same commands, so brightness can be set in 0.1% steps either way.
+
+- **Pad, X axis: color temperature.** If the lights have a list of temperatures (the integration's options, or the card's own list), each one is a band of the same width, with its own background color, however far apart they are in kelvin. Without a list the pad is a smooth range.
+- **Pad, Y axis: brightness**, on a gamma curve by default so that equal steps look equal. There is a hatched "off" zone under a line at the minimum brightness: dragging down through the line gives off, dragging up from off gives the minimum.
 - **Dragging** moves the handle exactly with your finger. The value changes where the background changes, and the handle settles on it when you let go, over the fade time (at most 3 s; 0.25 s when the fade is 0).
 - **Fade time** sits below the pad, in one of four looks.
 - **Off** puts the handle at the bottom, in the last color band.
 - Keyboard: the arrow keys move between bands and brightness steps.
 
-Everything can be set in the card editor, with no YAML: the light and its name; each temperature, its value and background color (or the integration's list); snapping; the minimum and maximum brightness; the brightness scale; the color of the off/on line; whether the fade shows, its look and its choices; and whether to send while dragging or on release. The editor shows what is wrong with a value and keeps the card at its last good settings until it is fixed. **Copy the settings of another light's card** takes over another card's settings (but not its light or name), so a second light is one step.
+Everything can be set in the card editor, with no YAML: the light and its name; each temperature, its value and background color (or the integration's list); snapping; the minimum and maximum brightness; the brightness scale; the color of the off/on line; whether the fade shows, its look and its choices; and whether to send while dragging or on release. The editor shows what is wrong with a value and keeps the card at its last good settings until it is fixed. **Copy the settings of another light's card** takes over another card's settings, including its layout (but not its light or name), so a second light is one step.
 
 In YAML, with the defaults:
 
@@ -165,6 +167,7 @@ In YAML, with the defaults:
 type: custom:lumencache-card
 entity: light.kitchen
 name: ""                         # defaults to the entity's name
+layout: pad                      # pad, or sliders for one slider each
 color_steps:                     # defaults to the integration's list; a number, or {kelvin, color}
   - 2700
   - {kelvin: 3000, color: "#ffb36b"}
@@ -182,7 +185,7 @@ send_mode: live                  # live (throttled while dragging) or on_release
 
 A config with a problem (a minimum above the maximum, a temperature listed twice, an unknown value) is refused with a message that says what to change.
 
-The lights are ordinary Home Assistant lights, so the built-in light controls, tile cards and other cards work as well.
+The lights are ordinary Home Assistant lights, so the built-in light controls, tile cards and other cards work as well, and Home Assistant's own dialog is a third way to set them.
 
 ## Multiple systems
 

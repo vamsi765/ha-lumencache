@@ -9,10 +9,12 @@ const DEFAULT_RANGE = [2700, 5000];
 const DEFAULT_STEPS = [2700, 3000, 3500, 4000, 5000];   // what the editor offers when it has no list to start from
 const FADE_STYLES = ["segments", "slider", "stepper", "classic"];
 const SEND_MODES = ["live", "on_release"];
+const LAYOUTS = ["pad", "sliders"];
 
 /** Every setting of the card. All of them can be changed in the card editor. */
 export const DEFAULTS = {
   name: "",
+  layout: "pad",                // pad (colour across, brightness up) or sliders (one each)
   send_mode: "live",            // live (throttled while dragging) or on_release
   brightness_curve: "gamma",    // gamma, perceptual or linear
   min_brightness_pct: 5,        // the lowest brightness the light shows; under it the pad means off
@@ -77,6 +79,25 @@ const STYLE = `
   }
   .handle.glide { transition: left var(--glide) ease-out, top var(--glide) ease-out, background-color var(--glide); }
   @media (prefers-reduced-motion: reduce) { .handle { transition: none !important; } }
+  .sliders { display: flex; justify-content: space-evenly; gap: 16px; }
+  .scol { display: flex; flex-direction: column; align-items: center; gap: 8px; min-width: 0; }
+  .slabel { display: flex; flex-direction: column; align-items: center; font-size: 13px; color: var(--secondary-text-color); }
+  .slabel .sval { font-variant-numeric: tabular-nums; color: var(--primary-text-color); font-size: 15px; font-weight: 500; min-height: 1.3em; }
+  .strack { display: flex; align-items: stretch; gap: 6px; height: 220px; }
+  .track {
+    position: relative; width: 56px; border-radius: 28px; overflow: hidden; touch-action: none; cursor: pointer;
+    border: 1px solid var(--divider-color); user-select: none; -webkit-user-select: none;
+  }
+  .track.off { filter: grayscale(0.85) brightness(0.8); }
+  .thumb {
+    position: absolute; left: 50%; width: 22px; height: 22px; margin: -11px 0 0 -11px; border-radius: 50%;
+    border: 3px solid #fff; box-shadow: 0 0 0 1px rgba(0,0,0,.4), 0 2px 6px rgba(0,0,0,.5); pointer-events: none;
+  }
+  .thumb.glide { transition: top var(--glide) ease-out, background-color var(--glide); }
+  @media (prefers-reduced-motion: reduce) { .thumb { transition: none !important; } }
+  .sticks { position: relative; width: 3.4em; }
+  .sticks span { position: absolute; left: 0; transform: translateY(-50%); font-size: 10px; color: var(--secondary-text-color);
+    font-variant-numeric: tabular-nums; white-space: nowrap; }
   .axes { display: flex; justify-content: space-between; font-size: 11px; color: var(--secondary-text-color); }
   .msg { color: var(--error-color); font-size: 13px; }
 
@@ -205,6 +226,7 @@ export function validateConfig(config) {
     bad("max_brightness_pct", `The maximum brightness (${max ?? DEFAULTS.max_brightness_pct} %) must be higher than the minimum (${min ?? DEFAULTS.min_brightness_pct} %).`);
   }
   oneOf("brightness_curve", Object.keys(curves), "The brightness scale");
+  oneOf("layout", LAYOUTS, "The layout");
   oneOf("fade_style", FADE_STYLES, "The fade look");
   oneOf("send_mode", SEND_MODES, "Sending");
   flag("snap_to_steps", "Snapping");
@@ -360,19 +382,19 @@ class LumenCacheCard extends HTMLElement {
   }
 
   /** CSS for the pad: a flat colour, one band for each listed temperature, or a smooth ramp. */
-  _background() {
+  _background(direction = "to right") {
     const [lo, hi] = this._range;
     if (!this._tunable) return kelvinToCss(4000);
     const entries = this._stepEntries;
     if (!entries.length) {
       const stops = [0, 0.25, 0.5, 0.75, 1].map((f) => `${kelvinToCss(lo + f * (hi - lo))} ${f * 100}%`);
-      return `linear-gradient(to right, ${stops.join(", ")})`;
+      return `linear-gradient(${direction}, ${stops.join(", ")})`;
     }
     const stops = entries.flatMap((e, i) => {
       const color = this._colorOf(e.kelvin);
       return [`${color} ${(i / entries.length) * 100}%`, `${color} ${((i + 1) / entries.length) * 100}%`];
     });
-    return `linear-gradient(to right, ${stops.join(", ")})`;
+    return `linear-gradient(${direction}, ${stops.join(", ")})`;
   }
 
   /** What to show: the drag in progress, else the value just released, else the entity's state. */
@@ -427,28 +449,33 @@ class LumenCacheCard extends HTMLElement {
     return this._off ? 0 : this._min;
   }
 
-  /** The value for a pointer position, and the position itself (the handle follows it until release). */
+  /**
+   * The value for a pointer position, and the position itself (the handle follows it until release). The pad
+   * sets both axes; in the sliders layout each slider sets its own and keeps the other's value.
+   */
   _fromPointer(event) {
-    const rect = this._pad.getBoundingClientRect();
-    const fx = Math.min(1, Math.max(0, (event.clientX - rect.left) / rect.width));
-    const fy = Math.min(1, Math.max(0, 1 - (event.clientY - rect.top) / rect.height));
-    return {
-      pct: this._brightnessAt(fy),
-      kelvin: this._tunable ? this._kelvinAt(fx) : this._current.kelvin,
-      raw: { x: this._tunable ? fx : 0.5, y: fy },
-    };
+    const rect = event.currentTarget.getBoundingClientRect();
+    const clamp = (v) => Math.min(1, Math.max(0, v));
+    if (this._role === "pad") {
+      const fx = clamp((event.clientX - rect.left) / rect.width);
+      const fy = clamp(1 - (event.clientY - rect.top) / rect.height);
+      return {
+        pct: this._brightnessAt(fy),
+        kelvin: this._tunable ? this._kelvinAt(fx) : this._current.kelvin,
+        raw: { x: this._tunable ? fx : 0.5, y: fy },
+      };
+    }
+    const along = clamp(1 - (event.clientY - rect.top) / rect.height);   // up is more
+    const cur = this._current;
+    const at = this._fractions(cur);
+    if (this._role === "bri") return { pct: this._brightnessAt(along), kelvin: cur.kelvin, raw: { x: at.x, y: along } };
+    return { pct: cur.pct, kelvin: this._kelvinAt(along), raw: { x: along, y: at.y } };
   }
 
   // --- DOM -----------------------------------------------------------------
 
   _build() {
-    this._root.innerHTML = `
-      <style>${STYLE}</style>
-      <ha-card>
-        <header>
-          <div class="title"><div class="name"></div><div class="readout"></div></div>
-          <button class="power" aria-label="Power" aria-pressed="false">${POWER_ICON}</button>
-        </header>
+    const pad = `
         <div class="pad" role="slider" tabindex="0" aria-label="Brightness and colour temperature">
           <div class="shade"></div>
           <svg class="grid" preserveAspectRatio="none" viewBox="0 0 100 100"></svg>
@@ -456,26 +483,66 @@ class LumenCacheCard extends HTMLElement {
           <div class="marker"><span></span></div>
           <div class="handle"></div>
         </div>
-        <div class="axes"><span class="xl"></span><span>Brightness ↑</span></div>
+        <div class="axes"><span class="xl"></span><span>Brightness ↑</span></div>`;
+    const sliders = `
+        <div class="sliders">
+          <div class="scol">
+            <div class="slabel"><span>Brightness</span><span class="sval bval"></span></div>
+            <div class="strack">
+              <div class="track bri" data-role="bri" role="slider" tabindex="0" aria-label="Brightness">
+                <div class="offzone"><span>Off</span></div>
+                <div class="marker"><span></span></div>
+                <div class="thumb"></div>
+              </div>
+              <div class="sticks bticks"></div>
+            </div>
+          </div>
+          <div class="scol cct-col">
+            <div class="slabel"><span>Colour temperature</span><span class="sval cval"></span></div>
+            <div class="strack">
+              <div class="track cct" data-role="cct" role="slider" tabindex="0" aria-label="Colour temperature"><div class="thumb"></div></div>
+              <div class="sticks cticks"></div>
+            </div>
+          </div>
+        </div>`;
+    this._root.innerHTML = `
+      <style>${STYLE}</style>
+      <ha-card>
+        <header>
+          <div class="title"><div class="name"></div><div class="readout"></div></div>
+          <button class="power" aria-label="Power" aria-pressed="false">${POWER_ICON}</button>
+        </header>
+        ${this._config.layout === "sliders" ? sliders : pad}
         <div class="fade"></div>
         <div class="msg" hidden></div>
       </ha-card>`;
     const $ = (sel) => this._root.querySelector(sel);
-    this._pad = $(".pad");
-    this._handle = $(".handle");
     this._name = $(".name");
     this._readout = $(".readout");
     this._power = $(".power");
     this._msg = $(".msg");
     this._fadeBox = $(".fade");
+    this._pad = $(".pad");   // null in the sliders layout
+    this._handle = $(".handle");
     this._offzone = $(".offzone");
     this._marker = $(".marker");
+    this._surfaces = this._pad
+      ? [{ el: this._pad, role: "pad" }]
+      : [{ el: $(".track.bri"), role: "bri" }, { el: $(".track.cct"), role: "cct" }];
+    if (!this._pad) {
+      this._briTrack = $(".track.bri");
+      this._cctTrack = $(".track.cct");
+      this._briThumb = this._briTrack.querySelector(".thumb");
+      this._cctThumb = this._cctTrack.querySelector(".thumb");
+    }
 
-    this._pad.addEventListener("pointerdown", (e) => this._down(e));
-    this._pad.addEventListener("pointermove", (e) => this._move(e));
-    this._pad.addEventListener("pointerup", (e) => this._up(e));
-    this._pad.addEventListener("pointercancel", (e) => this._up(e));
-    this._pad.addEventListener("keydown", (e) => this._key(e));
+    for (const { el, role } of this._surfaces) {
+      el.addEventListener("pointerdown", (e) => this._down(e, role));
+      el.addEventListener("pointermove", (e) => this._move(e));
+      el.addEventListener("pointerup", (e) => this._up(e));
+      el.addEventListener("pointercancel", (e) => this._up(e));
+      el.addEventListener("keydown", (e) => this._key(e, role));
+    }
     this._power.addEventListener("click", () => this._toggle());
     this._buildFade();
     this._ticksKey = "";   // the ticks are drawn in _render, once the entity's range is known
@@ -594,11 +661,35 @@ class LumenCacheCard extends HTMLElement {
     this._offzone.style.height = `${at}%`;
     this._marker.style.bottom = `calc(${at}% - 1px)`;
     this._marker.style.setProperty("--marker", this._config.marker_color);
-    this._marker.firstElementChild.textContent = `on from ${this._min}%`;
+    this._marker.firstElementChild.textContent = this._pad ? `on from ${this._min}%` : "";   // a slider has no room for it
+  }
+
+  /** Labels beside the two sliders, where the pad has them on its edges. */
+  _renderSliderTicks() {
+    const [lo, hi] = this._range;
+    const key = JSON.stringify([lo, hi, this._tunable, this._config.brightness_curve, this._max, this._config.min_brightness_pct, this._steps]);
+    if (key === this._ticksKey) return;
+    this._ticksKey = key;
+    const label = (box, items) => {
+      box.innerHTML = "";
+      for (const [f, text] of items) {
+        const span = document.createElement("span");
+        span.style.top = `${(1 - f) * 100}%`;
+        span.textContent = text;
+        box.appendChild(span);
+      }
+    };
+    const marks = [...new Set(TICKS[this._config.brightness_curve].map((p) => Math.min(p, this._max)))]
+      .filter((p) => p > this._min * 1.5 || !this._hasGap);
+    label(this._root.querySelector(".bticks"), marks.map((p) => [this._toFraction(p), `${p}%`]));
+    const steps = this._steps;
+    const kelvins = steps.length ? steps : [0, 1, 2, 3, 4].map((i) => Math.round((lo + ((hi - lo) * i) / 4) / 100) * 100);
+    label(this._root.querySelector(".cticks"), kelvins.map((k, i) => [steps.length ? (i + 0.5) / kelvins.length : (k - lo) / (hi - lo), k]));
+    this._root.querySelector(".cct-col").hidden = !this._tunable;
   }
 
   _render() {
-    if (!this._pad) return;
+    if (!this._name) return;
     const s = this._stateObj;
     const name = (s && s.attributes.friendly_name) || this._config.entity;
     this._name.textContent = this._config.name || name;
@@ -607,25 +698,44 @@ class LumenCacheCard extends HTMLElement {
     const on = s.state === "on";
     const cur = this._current;
     const held = this._drag || this._settled;
+    const off = held ? cur.pct === 0 : !on;
+    const glide = `${this._fade > 0 ? Math.min(this._fade, MAX_GLIDE_S) : GLIDE_S}s`;
+    const color = this._tunable ? this._colorOf(cur.kelvin) : kelvinToCss(4000);
     const { x, y } = this._drag ? this._drag.raw : this._fractions(cur);
 
-    this._renderTicks();
+    if (this._pad) {
+      this._renderTicks();
+      this._pad.style.background = this._background();
+      this._pad.classList.toggle("off", off);
+      // The handle follows the pointer exactly, then settles on the value over the fade time.
+      this._handle.classList.toggle("glide", !this._drag);
+      this._handle.style.setProperty("--glide", glide);
+      this._handle.style.left = `${x * 100}%`;
+      this._handle.style.top = `${(1 - y) * 100}%`;
+      this._handle.style.background = color;
+    } else {
+      this._renderSliderTicks();
+      this._briTrack.style.background = `linear-gradient(to top, rgba(0,0,0,.85), ${color})`;
+      this._cctTrack.style.background = this._background("to top");   // warm at the bottom
+      this._briTrack.classList.toggle("off", off);
+      this._cctTrack.classList.toggle("off", off);
+      for (const [thumb, f] of [[this._briThumb, y], [this._cctThumb, x]]) {
+        thumb.classList.toggle("glide", !this._drag);
+        thumb.style.setProperty("--glide", glide);
+        thumb.style.top = `${(1 - f) * 100}%`;
+        thumb.style.background = color;
+      }
+      this._root.querySelector(".bval").textContent = off ? "Off" : `${cur.pct} %`;
+      this._root.querySelector(".cval").textContent = this._tunable ? `${cur.kelvin} K` : "";
+    }
     this._renderMarker();
-    this._pad.style.background = this._background();
-    this._pad.classList.toggle("off", held ? cur.pct === 0 : !on);
-    // The handle follows the pointer exactly, then settles on the value over the fade time.
-    this._handle.classList.toggle("glide", !this._drag);
-    this._handle.style.setProperty("--glide", `${this._fade > 0 ? Math.min(this._fade, MAX_GLIDE_S) : GLIDE_S}s`);
-    this._handle.style.left = `${x * 100}%`;
-    this._handle.style.top = `${(1 - y) * 100}%`;
-    this._handle.style.background = this._tunable ? this._colorOf(cur.kelvin) : kelvinToCss(4000);
 
     this._power.setAttribute("aria-pressed", String(on));
     const showing = held ? cur.pct > 0 : on;
     this._readout.textContent = showing
       ? `${this._tunable ? cur.kelvin + " K · " : ""}${cur.pct} %`
       : "Off";
-    this._pad.setAttribute("aria-valuetext", this._readout.textContent);
+    for (const { el } of this._surfaces) el.setAttribute("aria-valuetext", this._readout.textContent);
     this._renderFade();
     this._msg.hidden = !this._error;
     this._msg.textContent = this._error;
@@ -633,8 +743,9 @@ class LumenCacheCard extends HTMLElement {
 
   // --- input ---------------------------------------------------------------
 
-  _down(event) {
-    this._pad.setPointerCapture(event.pointerId);
+  _down(event, role) {
+    this._role = role;
+    event.currentTarget.setPointerCapture(event.pointerId);
     this._off = !this._stateObj || this._stateObj.state !== "on";
     this._lastFy = null;
     this._lastDragSent = null;
@@ -663,8 +774,13 @@ class LumenCacheCard extends HTMLElement {
     this._render();
   }
 
-  _key(event) {
-    const step = { ArrowUp: [0, 0.03], ArrowDown: [0, -0.03], ArrowRight: [0.03, 0], ArrowLeft: [-0.03, 0] }[event.key];
+  _key(event, role = "pad") {
+    const keys = {
+      pad: { ArrowUp: [0, 0.03], ArrowDown: [0, -0.03], ArrowRight: [0.03, 0], ArrowLeft: [-0.03, 0] },
+      bri: { ArrowUp: [0, 0.03], ArrowRight: [0, 0.03], ArrowDown: [0, -0.03], ArrowLeft: [0, -0.03] },
+      cct: { ArrowUp: [0.03, 0], ArrowRight: [0.03, 0], ArrowDown: [-0.03, 0], ArrowLeft: [-0.03, 0] },
+    };
+    const step = keys[role][event.key];
     if (!step) return;
     event.preventDefault();
     const cur = this._current;
@@ -756,7 +872,7 @@ const EDITOR_STYLE = `
 
 const RECENT_KEY = "lumencache-card:recent";
 const CARD_TYPE = "custom:lumencache-card";
-const COPIED = ["send_mode", "brightness_curve", "min_brightness_pct", "max_brightness_pct", "color_steps", "snap_to_steps",
+const COPIED = ["layout", "send_mode", "brightness_curve", "min_brightness_pct", "max_brightness_pct", "color_steps", "snap_to_steps",
   "marker_color", "show_fade", "fade_style", "fade_presets"];   // what "copy from another card" takes over
 
 /** Every lumencache card in a dashboard config, however deep in stacks, grids and sections. */
@@ -904,7 +1020,12 @@ class LumenCacheCardEditor extends HTMLElement {
           ${others.length ? `
           <label class="row"><span>Copy the settings of another light's card</span>
             <select data-role="copy-from">${option("", "Choose…", "")}${others.map((o) => option(o.entity, `${nameOf(o.entity)} (${o.entity})`, "")).join("")}</select></label>
-          <p class="hint">Takes over the temperatures and colours, the brightness limits, the fade and the sending. This card keeps its own light and name.</p>` : ""}
+          <p class="hint">Takes over the layout, the temperatures and colours, the brightness limits, the fade and the sending. This card keeps its own light and name.</p>` : ""}
+          <label class="row"><span>Layout</span>
+            <select data-key="layout">
+              ${option("pad", "Pad (colour × brightness)", c.layout)}
+              ${option("sliders", "Two sliders", c.layout)}
+            </select></label>
         </fieldset>
 
         <fieldset><legend>Colour temperatures</legend>
